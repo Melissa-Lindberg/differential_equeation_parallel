@@ -10,6 +10,8 @@
 #include <string>
 #include <vector>
 
+#include "log.h"
+
 namespace {
 
 constexpr double EPS_GEOM = 1e-12;
@@ -403,12 +405,6 @@ struct RunConfig {
     double epsilon;
 };
 
-struct IterationLogEntry {
-    std::size_t iteration;
-    double residual;
-    double alpha;
-};
-
 struct RunResult {
     std::vector<double> solution;
     std::size_t iterations = 0;
@@ -512,103 +508,21 @@ void write_solution_csv(const std::string &filename, const Grid &grid, const std
     }
 }
 
-void write_meta(const std::string &filename,
-                const Grid &grid,
-                double epsilon,
-                const RunResult &result,
-                const RunConfig &config) {
-    std::ofstream out(filename);
-    if (!out) {
-        throw std::runtime_error("Не удалось открыть файл " + filename);
-    }
-    out << std::scientific << std::setprecision(6);
-    out << "A1=" << grid.A1 << "\n";
-    out << "B1=" << grid.B1 << "\n";
-    out << "A2=" << grid.A2 << "\n";
-    out << "B2=" << grid.B2 << "\n";
-    out << "M=" << grid.M << "\n";
-    out << "N=" << grid.N << "\n";
-    out << "h1=" << grid.h1 << "\n";
-    out << "h2=" << grid.h2 << "\n";
-    out << "epsilon=" << epsilon << "\n";
-    out << "delta=" << config.delta << "\n";
-    out << "tau=" << config.tau << "\n";
-    out << "maxIt=" << config.maxIt << "\n";
-    out << "iterations=" << result.iterations << "\n";
-    out << "residual_norm=" << result.residual_norm << "\n";
-    out << "diff_norm=" << result.diff_norm << "\n";
-    out << "rhs_norm=" << result.rhs_norm << "\n";
-    out << "stop_reason=" << result.stop_reason << "\n";
-}
-
-void write_mask_csv(const std::string &filename, const Grid &grid) {
-    std::ofstream out(filename);
-    if (!out) {
-        throw std::runtime_error("Не удалось открыть файл " + filename);
-    }
-    out << "x,y,inD\n";
+std::vector<MaskEntry> build_mask_entries(const Grid &grid) {
+    std::vector<MaskEntry> entries;
+    entries.reserve(static_cast<std::size_t>(grid.M + 1) * static_cast<std::size_t>(grid.N + 1));
     for (int j = 0; j <= grid.N; ++j) {
+        double y_val = grid.y(j);
         for (int i = 0; i <= grid.M; ++i) {
-            bool inside = in_D(grid.x(i), grid.y(j));
-            out << grid.x(i) << ',' << grid.y(j) << ',' << (inside ? 1 : 0) << '\n';
+            double x_val = grid.x(i);
+            bool inside = in_D(x_val, y_val);
+            entries.push_back(MaskEntry{x_val, y_val, inside});
         }
     }
+    return entries;
 }
 
-void write_run_log(const std::string &filename,
-                   int M,
-                   int N,
-                   const RunResult &result) {
-    std::ofstream out(filename);
-    if (!out) {
-        throw std::runtime_error("Не удалось открыть файл " + filename);
-    }
-    out << std::scientific << std::setprecision(6);
-    out << "# Run M=" << M << ", N=" << N << '\n';
-    for (const auto &entry : result.iteration_log) {
-        out << entry.iteration << ", " << entry.residual << ", " << entry.alpha << '\n';
-    }
-    out << "iters=" << result.iterations << ", residual=" << result.residual_norm
-        << ", diff=" << result.diff_norm << '\n';
 }
-
-void write_summary_txt(const std::string &filename, const std::vector<SummaryEntry> &summary) {
-    std::ofstream out(filename);
-    if (!out) {
-        throw std::runtime_error("Не удалось открыть файл " + filename);
-    }
-    out << "Residual summary:\n";
-    out << "M,N,||r||_E\n";
-    out << std::scientific << std::setprecision(6);
-    for (const auto &entry : summary) {
-        out << entry.M << ',' << entry.N << ',' << entry.residual << '\n';
-    }
-}
-
-void write_runtime(const std::string &filename, double seconds) {
-    std::ofstream out(filename);
-    if (!out) {
-        throw std::runtime_error("Не удалось открыть файл " + filename);
-    }
-    out << std::scientific << std::setprecision(6);
-    out << "Total runtime: " << seconds << " s\n";
-}
-
-void write_error_log(const std::string &filename, const std::string &message) {
-    std::ofstream out(filename);
-    if (!out) {
-        return;
-    }
-    out << "Ошибка: " << message << '\n';
-}
-
-struct SummaryEntry {
-    int M;
-    int N;
-    double residual;
-};
-
-} // namespace
 
 int main(int argc, char **argv) {
     auto overall_start = std::chrono::steady_clock::now();
@@ -643,10 +557,34 @@ int main(int argc, char **argv) {
 
             std::string suffix = opt.batch ? ("_" + std::to_string(M) + "x" + std::to_string(N)) : "";
             write_solution_csv("solution" + suffix + ".csv", grid, result.solution);
-            write_meta("meta" + suffix + ".txt", grid, epsilon, result, config);
-            write_run_log("run" + suffix + ".log", M, N, result);
+            write_meta_txt("meta" + suffix + ".txt",
+                           grid.A1,
+                           grid.B1,
+                           grid.A2,
+                           grid.B2,
+                           grid.M,
+                           grid.N,
+                           grid.h1,
+                           grid.h2,
+                           epsilon,
+                           config.delta,
+                           config.tau,
+                           config.maxIt,
+                           result.iterations,
+                           result.residual_norm,
+                           result.diff_norm,
+                           result.rhs_norm,
+                           result.stop_reason);
+            write_run_log("run" + suffix + ".log",
+                         M,
+                         N,
+                         result.iteration_log,
+                         result.iterations,
+                         result.residual_norm,
+                         result.diff_norm);
             if (opt.writeMask) {
-                write_mask_csv("mask" + suffix + ".csv", grid);
+                std::vector<MaskEntry> mask_entries = build_mask_entries(grid);
+                write_mask_csv("mask" + suffix + ".csv", mask_entries);
             }
 
             summary.push_back({M, N, result.residual_norm});
