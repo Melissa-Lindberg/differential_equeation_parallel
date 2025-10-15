@@ -6,7 +6,6 @@
 #include <iomanip>
 #include <algorithm>
 #include <limits>
-#include <iostream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -404,6 +403,12 @@ struct RunConfig {
     double epsilon;
 };
 
+struct IterationLogEntry {
+    std::size_t iteration;
+    double residual;
+    double alpha;
+};
+
 struct RunResult {
     std::vector<double> solution;
     std::size_t iterations = 0;
@@ -411,6 +416,7 @@ struct RunResult {
     double diff_norm = 0.0;
     double rhs_norm = 0.0;
     std::string stop_reason;
+    std::vector<IterationLogEntry> iteration_log;
 };
 
 RunResult solve_problem(const RunConfig &config, const ProblemData &data) {
@@ -427,8 +433,7 @@ RunResult solve_problem(const RunConfig &config, const ProblemData &data) {
 
     double residual_norm = norm_E(grid, r);
     double diff_norm = std::numeric_limits<double>::infinity();
-
-    std::cout << std::scientific << std::setprecision(6);
+    std::vector<IterationLogEntry> iteration_log;
     std::size_t iter = 0;
     std::string stop_reason;
 
@@ -461,7 +466,7 @@ RunResult solve_problem(const RunConfig &config, const ProblemData &data) {
 
         residual_norm = norm_E(grid, r);
         ++iter;
-        std::cout << iter << ", " << residual_norm << ", " << alpha << '\n';
+        iteration_log.push_back({iter, residual_norm, alpha});
 
         if (diff_norm < config.delta) {
             stop_reason = "diff<delta";
@@ -481,9 +486,6 @@ RunResult solve_problem(const RunConfig &config, const ProblemData &data) {
         }
     }
 
-    std::cout << "iters=" << iter << ", residual=" << residual_norm
-              << ", diff=" << diff_norm << '\n';
-
     RunResult result;
     result.solution = std::move(w);
     result.iterations = iter;
@@ -491,6 +493,7 @@ RunResult solve_problem(const RunConfig &config, const ProblemData &data) {
     result.diff_norm = diff_norm;
     result.rhs_norm = rhs_norm;
     result.stop_reason = stop_reason;
+    result.iteration_log = std::move(iteration_log);
     return result;
 }
 
@@ -552,6 +555,53 @@ void write_mask_csv(const std::string &filename, const Grid &grid) {
     }
 }
 
+void write_run_log(const std::string &filename,
+                   int M,
+                   int N,
+                   const RunResult &result) {
+    std::ofstream out(filename);
+    if (!out) {
+        throw std::runtime_error("Не удалось открыть файл " + filename);
+    }
+    out << std::scientific << std::setprecision(6);
+    out << "# Run M=" << M << ", N=" << N << '\n';
+    for (const auto &entry : result.iteration_log) {
+        out << entry.iteration << ", " << entry.residual << ", " << entry.alpha << '\n';
+    }
+    out << "iters=" << result.iterations << ", residual=" << result.residual_norm
+        << ", diff=" << result.diff_norm << '\n';
+}
+
+void write_summary_txt(const std::string &filename, const std::vector<SummaryEntry> &summary) {
+    std::ofstream out(filename);
+    if (!out) {
+        throw std::runtime_error("Не удалось открыть файл " + filename);
+    }
+    out << "Residual summary:\n";
+    out << "M,N,||r||_E\n";
+    out << std::scientific << std::setprecision(6);
+    for (const auto &entry : summary) {
+        out << entry.M << ',' << entry.N << ',' << entry.residual << '\n';
+    }
+}
+
+void write_runtime(const std::string &filename, double seconds) {
+    std::ofstream out(filename);
+    if (!out) {
+        throw std::runtime_error("Не удалось открыть файл " + filename);
+    }
+    out << std::scientific << std::setprecision(6);
+    out << "Total runtime: " << seconds << " s\n";
+}
+
+void write_error_log(const std::string &filename, const std::string &message) {
+    std::ofstream out(filename);
+    if (!out) {
+        return;
+    }
+    out << "Ошибка: " << message << '\n';
+}
+
 struct SummaryEntry {
     int M;
     int N;
@@ -563,6 +613,8 @@ struct SummaryEntry {
 int main(int argc, char **argv) {
     auto overall_start = std::chrono::steady_clock::now();
     int exit_code = EXIT_SUCCESS;
+    std::string error_message;
+    std::vector<SummaryEntry> summary;
     try {
         Options opt = parse_args(argc, argv);
         if (opt.B1 <= opt.A1 || opt.B2 <= opt.A2) {
@@ -577,7 +629,6 @@ int main(int argc, char **argv) {
         } else {
             grids = {{opt.M, opt.N}};
         }
-        std::vector<SummaryEntry> summary;
         for (std::size_t run_idx = 0; run_idx < grids.size(); ++run_idx) {
             int M = grids[run_idx].first;
             int N = grids[run_idx].second;
@@ -588,34 +639,46 @@ int main(int argc, char **argv) {
             long long maxIt = opt.maxIt > 0 ? opt.maxIt : static_cast<long long>((M - 1) * (N - 1));
             RunConfig config{grid, opt.delta, opt.tau, maxIt, epsilon};
 
-            std::cout << "# Run M=" << M << ", N=" << N << '\n';
             RunResult result = solve_problem(config, data);
 
             std::string suffix = opt.batch ? ("_" + std::to_string(M) + "x" + std::to_string(N)) : "";
             write_solution_csv("solution" + suffix + ".csv", grid, result.solution);
             write_meta("meta" + suffix + ".txt", grid, epsilon, result, config);
+            write_run_log("run" + suffix + ".log", M, N, result);
             if (opt.writeMask) {
                 write_mask_csv("mask" + suffix + ".csv", grid);
             }
 
             summary.push_back({M, N, result.residual_norm});
-            std::cout << '\n';
         }
 
-        std::cout << "Residual summary:\n";
-        std::cout << "M,N,||r||_E\n";
-        std::cout << std::scientific << std::setprecision(6);
-        for (const auto &entry : summary) {
-            std::cout << entry.M << ',' << entry.N << ',' << entry.residual << '\n';
-        }
+        write_summary_txt("summary.txt", summary);
     } catch (const std::exception &ex) {
-        std::cerr << "Ошибка: " << ex.what() << '\n';
+        error_message = ex.what();
         exit_code = EXIT_FAILURE;
     }
     auto overall_end = std::chrono::steady_clock::now();
     std::chrono::duration<double> elapsed = overall_end - overall_start;
-    std::ostream &out = exit_code == EXIT_SUCCESS ? std::cout : std::cerr;
-    out << std::scientific << std::setprecision(6);
-    out << "Total runtime: " << elapsed.count() << " s\n";
+    double elapsed_seconds = elapsed.count();
+
+    if (exit_code == EXIT_SUCCESS) {
+        try {
+            write_runtime("runtime.txt", elapsed_seconds);
+        } catch (const std::exception &ex) {
+            error_message = ex.what();
+            exit_code = EXIT_FAILURE;
+        }
+    } else {
+        std::ofstream runtime_out("runtime.txt");
+        if (runtime_out) {
+            runtime_out << std::scientific << std::setprecision(6);
+            runtime_out << "Total runtime: " << elapsed_seconds << " s\n";
+        }
+    }
+
+    if (exit_code != EXIT_SUCCESS) {
+        write_error_log("error.log", error_message.empty() ? "Неизвестная ошибка" : error_message);
+    }
+
     return exit_code;
 }
