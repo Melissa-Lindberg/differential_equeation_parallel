@@ -10,31 +10,7 @@
 #include <string>
 #include <vector>
 
-#include "log.h"
-
-namespace {
-
-constexpr double EPS_GEOM = 1e-12;
-
-struct Point {
-    double x;
-    double y;
-};
-
-struct HalfPlane {
-    double a;
-    double b;
-    double c;
-
-    double eval(const Point &p) const {
-        return a * p.x + b * p.y - c;
-    }
-
-    bool contains(const Point &p) const {
-        return eval(p) <= EPS_GEOM;
-    }
-};
-
+#include "consistent.h"
 const std::vector<HalfPlane> &domain_halfplanes() {
     static const std::vector<HalfPlane> planes = {
         {+1.0, +1.0, 2.0},
@@ -168,50 +144,6 @@ double segment_length_in_D(const Point &p0, const Point &p1) {
     }
     return length;
 }
-
-struct Grid {
-    double A1;
-    double B1;
-    double A2;
-    double B2;
-    int M;
-    int N;
-    double h1;
-    double h2;
-
-    Grid(double a1, double b1, double a2, double b2, int m, int n)
-        : A1(a1), B1(b1), A2(a2), B2(b2), M(m), N(n) {
-        h1 = (B1 - A1) / static_cast<double>(M);
-        h2 = (B2 - A2) / static_cast<double>(N);
-    }
-
-    double x(int i) const {
-        return A1 + h1 * static_cast<double>(i);
-    }
-
-    double y(int j) const {
-        return A2 + h2 * static_cast<double>(j);
-    }
-
-    double x_mid(int i) const {
-        return A1 + (static_cast<double>(i) - 0.5) * h1;
-    }
-
-    double y_mid(int j) const {
-        return A2 + (static_cast<double>(j) - 0.5) * h2;
-    }
-
-    std::size_t index(int i, int j) const {
-        return static_cast<std::size_t>(j) * static_cast<std::size_t>(M + 1) + static_cast<std::size_t>(i);
-    }
-};
-
-struct ProblemData {
-    std::vector<double> a; // коэффициенты по x
-    std::vector<double> b; // коэффициенты по y
-    std::vector<double> F; // правая часть
-    std::vector<double> diag; // диагональ предобуславливателя
-};
 
 ProblemData build_problem(const Grid &grid, double epsilon) {
     ProblemData data;
@@ -348,73 +280,6 @@ void apply_D_inv(const Grid &grid,
     }
 }
 
-struct Options {
-    double A1 = -2.0;
-    double B1 = 2.0;
-    double A2 = -2.0;
-    double B2 = 2.0;
-    int M = 10;
-    int N = 10;
-    double delta = 1e-8;
-    double tau = 1e-8;
-    long long maxIt = -1;
-    bool batch = false;
-    bool writeMask = false;
-};
-
-Options parse_args(int argc, char **argv) {
-    Options opt;
-    for (int i = 1; i < argc; ++i) {
-        std::string arg = argv[i];
-        if (arg == "--batch") {
-            opt.batch = true;
-        } else if (arg == "--mask") {
-            opt.writeMask = true;
-        } else if (arg == "--A1" || arg == "--B1" || arg == "--A2" || arg == "--B2" ||
-                   arg == "--delta" || arg == "--tau" || arg == "--M" || arg == "--N" ||
-                   arg == "--maxIt") {
-            if (i + 1 >= argc) {
-                throw std::runtime_error("Отсутствует значение для аргумента " + arg);
-            }
-            std::string value = argv[++i];
-            try {
-                if (arg == "--A1") opt.A1 = std::stod(value);
-                else if (arg == "--B1") opt.B1 = std::stod(value);
-                else if (arg == "--A2") opt.A2 = std::stod(value);
-                else if (arg == "--B2") opt.B2 = std::stod(value);
-                else if (arg == "--delta") opt.delta = std::stod(value);
-                else if (arg == "--tau") opt.tau = std::stod(value);
-                else if (arg == "--M") opt.M = std::stoi(value);
-                else if (arg == "--N") opt.N = std::stoi(value);
-                else if (arg == "--maxIt") opt.maxIt = std::stoll(value);
-            } catch (const std::exception &) {
-                throw std::runtime_error("Некорректное значение аргумента " + arg);
-            }
-        } else {
-            throw std::runtime_error("Неизвестный аргумент: " + arg);
-        }
-    }
-    return opt;
-}
-
-struct RunConfig {
-    Grid grid;
-    double delta;
-    double tau;
-    long long maxIt;
-    double epsilon;
-};
-
-struct RunResult {
-    std::vector<double> solution;
-    std::size_t iterations = 0;
-    double residual_norm = 0.0;
-    double diff_norm = 0.0;
-    double rhs_norm = 0.0;
-    std::string stop_reason;
-    std::vector<IterationLogEntry> iteration_log;
-};
-
 RunResult solve_problem(const RunConfig &config, const ProblemData &data) {
     const Grid &grid = config.grid;
     std::size_t total_nodes = static_cast<std::size_t>(grid.M + 1) * static_cast<std::size_t>(grid.N + 1);
@@ -522,40 +387,42 @@ std::vector<MaskEntry> build_mask_entries(const Grid &grid) {
     return entries;
 }
 
-}
-
-int main(int argc, char **argv) {
+int main() {
     auto overall_start = std::chrono::steady_clock::now();
     int exit_code = EXIT_SUCCESS;
     std::string error_message;
     std::vector<SummaryEntry> summary;
     try {
-        Options opt = parse_args(argc, argv);
-        if (opt.B1 <= opt.A1 || opt.B2 <= opt.A2) {
+        constexpr double A1 = -2.0;
+        constexpr double B1 = 2.0;
+        constexpr double A2 = -2.0;
+        constexpr double B2 = 2.0;
+        constexpr double DELTA = 1e-8;
+        constexpr double TAU = 1e-8;
+
+        if (B1 <= A1 || B2 <= A2) {
             throw std::runtime_error("Диапазоны по x или y заданы некорректно");
         }
-        if (opt.M < 2 || opt.N < 2) {
-            throw std::runtime_error("Сетке нужны M,N >= 2");
-        }
-        std::vector<std::pair<int, int>> grids;
-        if (opt.batch) {
-            grids = {{400, 600}, {800, 1200}};
-        } else {
-            grids = {{opt.M, opt.N}};
-        }
-        for (std::size_t run_idx = 0; run_idx < grids.size(); ++run_idx) {
-            int M = grids[run_idx].first;
-            int N = grids[run_idx].second;
-            Grid grid(opt.A1, opt.B1, opt.A2, opt.B2, M, N);
+
+        const std::vector<std::pair<int, int>> grids = {{400, 600}, {800, 1200}};
+
+        for (const auto &dims : grids) {
+            int M = dims.first;
+            int N = dims.second;
+            if (M < 2 || N < 2) {
+                throw std::runtime_error("Сетке нужны M,N >= 2");
+            }
+
+            Grid grid(A1, B1, A2, B2, M, N);
             double h = std::max(grid.h1, grid.h2);
             double epsilon = h * h;
             ProblemData data = build_problem(grid, epsilon);
-            long long maxIt = opt.maxIt > 0 ? opt.maxIt : static_cast<long long>((M - 1) * (N - 1));
-            RunConfig config{grid, opt.delta, opt.tau, maxIt, epsilon};
+            long long maxIt = static_cast<long long>((M - 1) * (N - 1));
+            RunConfig config{grid, DELTA, TAU, maxIt, epsilon};
 
             RunResult result = solve_problem(config, data);
 
-            std::string suffix = opt.batch ? ("_" + std::to_string(M) + "x" + std::to_string(N)) : "";
+            std::string suffix = "_" + std::to_string(M) + "x" + std::to_string(N);
             write_solution_csv("solution" + suffix + ".csv", grid, result.solution);
             write_meta_txt("meta" + suffix + ".txt",
                            grid.A1,
@@ -582,10 +449,7 @@ int main(int argc, char **argv) {
                          result.iterations,
                          result.residual_norm,
                          result.diff_norm);
-            if (opt.writeMask) {
-                std::vector<MaskEntry> mask_entries = build_mask_entries(grid);
-                write_mask_csv("mask" + suffix + ".csv", mask_entries);
-            }
+            write_mask_csv("mask" + suffix + ".csv", build_mask_entries(grid));
 
             summary.push_back({M, N, result.residual_norm});
         }
