@@ -6,7 +6,7 @@
 
 #include "log.h"
 
-inline constexpr double EPS_GEOM = 1e-12;
+constexpr double EPS_GEOM = 1e-12;
 
 struct Point {
     double x;

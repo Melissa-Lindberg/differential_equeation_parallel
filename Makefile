@@ -1,5 +1,5 @@
 CXX := g++
-CXXFLAGS := -std=c++17 -O2 -Wall -Wextra -Wpedantic
+CXXFLAGS := -std=c++11 -O2 -Wall -Wextra
 LDFLAGS :=
 TARGET := consistent
 SRCS := consistent.cpp log.cpp
