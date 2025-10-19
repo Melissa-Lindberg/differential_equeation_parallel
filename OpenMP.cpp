@@ -404,19 +404,36 @@ std::vector<MaskEntry> build_mask_entries(const Grid &grid) {
   return entries;
 }
 
-int main() {
-  auto overall_start = std::chrono::steady_clock::now();
+int main(int argc, char **argv) {
   const std::string output_dir = "output";
-  const std::string output_prefix = output_dir + "/";
+  ensure_directory(output_dir);
+
   int exit_code = EXIT_SUCCESS;
   std::string error_message;
-  std::vector<SummaryEntry> summary;
-  std::vector<RuntimeEntry> runtime_entries;
+  std::string current_error_log_path = output_dir + "/omp_error.log";
+
   try {
-    ensure_directory(output_dir);
     if (B1 <= A1 || B2 <= A2) {
       throw std::runtime_error("Диапазоны по x или y заданы некорректно");
     }
+
+    int thread_count = 1;
+    if (argc > 1) {
+      thread_count = std::stoi(argv[1]);
+      if (thread_count <= 0) {
+        throw std::runtime_error(
+            "Количество потоков должно быть положительным");
+      }
+    }
+
+    omp_set_num_threads(thread_count);
+    std::string output_prefix =
+        output_dir + "/omp_t" + std::to_string(thread_count) + "_";
+    current_error_log_path = output_prefix + "error.log";
+
+    std::vector<SummaryEntry> summary;
+    std::vector<RuntimeEntry> runtime_entries;
+    auto start_time = std::chrono::steady_clock::now();
 
     for (const auto &dims : default_grids()) {
       int M = dims.first;
@@ -458,35 +475,20 @@ int main() {
     }
 
     write_summary_txt(output_prefix + "summary.txt", summary);
+    auto end_time = std::chrono::steady_clock::now();
+    double total_seconds =
+        std::chrono::duration<double>(end_time - start_time).count();
+    write_runtime(output_prefix + "runtime.txt", runtime_entries,
+                  total_seconds);
   } catch (const std::exception &ex) {
     error_message = ex.what();
     exit_code = EXIT_FAILURE;
   }
-  auto overall_end = std::chrono::steady_clock::now();
-  std::chrono::duration<double> elapsed = overall_end - overall_start;
-  double elapsed_seconds = elapsed.count();
-
-  const std::string runtime_path = output_prefix + "runtime.txt";
-  const std::string error_log_path = output_prefix + "error.log";
-
-  if (exit_code == EXIT_SUCCESS) {
-    try {
-      write_runtime(runtime_path, runtime_entries, elapsed_seconds);
-    } catch (const std::exception &ex) {
-      error_message = ex.what();
-      exit_code = EXIT_FAILURE;
-    }
-  } else {
-    std::ofstream runtime_out(runtime_path.c_str());
-    if (runtime_out) {
-      runtime_out << std::scientific << std::setprecision(6);
-      runtime_out << "Total runtime: " << elapsed_seconds << " s\n";
-    }
-  }
 
   if (exit_code != EXIT_SUCCESS) {
-    write_error_log(error_log_path, error_message.empty() ? "Неизвестная ошибка"
-                                                          : error_message);
+    write_error_log(current_error_log_path, error_message.empty()
+                                                ? "Неизвестная ошибка"
+                                                : error_message);
   }
 
   return exit_code;

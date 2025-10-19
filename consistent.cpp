@@ -421,10 +421,11 @@ int main() {
       runtime_entries.push_back({M, N, grid_seconds});
 
       std::string suffix = "_" + std::to_string(M) + "x" + std::to_string(N);
-      std::string solution_path = output_prefix + "solution" + suffix + ".csv";
-      std::string meta_path = output_prefix + "meta" + suffix + ".txt";
-      std::string run_log_path = output_prefix + "run" + suffix + ".log";
-      std::string mask_path = output_prefix + "mask" + suffix + ".csv";
+      std::string solution_path =
+          output_prefix + "seq_solution" + suffix + ".csv";
+      std::string meta_path = output_prefix + "seq_meta" + suffix + ".txt";
+      std::string run_log_path = output_prefix + "seq_run" + suffix + ".log";
+      std::string mask_path = output_prefix + "seq_mask" + suffix + ".csv";
       write_solution_csv(solution_path, grid, result.solution);
       write_meta_txt(meta_path, grid.A1, grid.B1, grid.A2, grid.B2, grid.M,
                      grid.N, grid.h1, grid.h2, epsilon, config.delta,
@@ -438,7 +439,7 @@ int main() {
       summary.push_back({M, N, result.residual_norm});
     }
 
-    write_summary_txt(output_prefix + "summary.txt", summary);
+    write_summary_txt(output_prefix + "seq_summary.txt", summary);
   } catch (const std::exception &ex) {
     error_message = ex.what();
     exit_code = EXIT_FAILURE;
@@ -447,8 +448,8 @@ int main() {
   std::chrono::duration<double> elapsed = overall_end - overall_start;
   double elapsed_seconds = elapsed.count();
 
-  const std::string runtime_path = output_prefix + "runtime.txt";
-  const std::string error_log_path = output_prefix + "error.log";
+  const std::string runtime_path = output_prefix + "seq_runtime.txt";
+  const std::string error_log_path = output_prefix + "seq_error.log";
 
   if (exit_code == EXIT_SUCCESS) {
     try {
