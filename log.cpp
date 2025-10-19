@@ -121,10 +121,11 @@ void write_meta_txt(const std::string &filename, double A1, double B1,
   out << "stop_reason=" << stop_reason << '\n';
 }
 
-std::vector<std::pair<int, int>>
-parse_grid_arguments(int argc, char **argv,
-                     const std::vector<std::pair<int, int>> &defaults) {
-  std::vector<std::pair<int, int>> grids;
+std::pair<int, int> parse_grid_arguments(int argc, char **argv,
+                                         const std::pair<int, int> &defaults) {
+  bool has_override = false;
+  int override_M = 0;
+  int override_N = 0;
   for (int i = 1; i < argc; ++i) {
     std::string arg = argv[i];
     if (arg == "-g") {
@@ -136,20 +137,26 @@ parse_grid_arguments(int argc, char **argv,
       if (M < 2 || N < 2) {
         throw std::runtime_error("Размеры сетки должны быть >= 2");
       }
-      grids.emplace_back(M, N);
+      if (has_override) {
+        throw std::runtime_error("Параметр -g можно указывать только один раз");
+      }
+      has_override = true;
+      override_M = M;
+      override_N = N;
     } else if (arg == "-t") {
       if (i + 1 >= argc) {
         throw std::runtime_error("После -t ожидается целое число");
       }
-      ++i; // значение будет обработано в parse_thread_argument
-    } else if (arg.rfind('-', 0) == 0) {
+      ++i;
+    } else if (!arg.empty() && arg[0] == '-') {
       throw std::runtime_error("Неизвестный аргумент: " + arg);
     }
   }
-  if (grids.empty()) {
-    return defaults;
+  if (has_override) {
+    return std::make_pair(override_M, override_N);
   }
-  return grids;
+
+  return defaults;
 }
 
 int parse_thread_argument(int argc, char **argv, int default_threads) {

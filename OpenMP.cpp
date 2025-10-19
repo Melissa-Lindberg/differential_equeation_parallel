@@ -423,56 +423,52 @@ int main(int argc, char **argv) {
         output_dir + "/omp_t" + std::to_string(thread_count) + "_";
     current_error_log_path = output_prefix + "error.log";
 
-    const auto grids = parse_grid_arguments(argc, argv, default_grids());
+    const auto grids = parse_grid_arguments(argc, argv, default_grids(1));
+    int M = grids.first;
+    int N = grids.second;
+    if (M < 2 || N < 2) {
+      throw std::runtime_error("Сетке нужны M,N >= 2");
+    }
 
     std::vector<SummaryEntry> summary;
     std::vector<RuntimeEntry> runtime_entries;
     auto start_time = std::chrono::steady_clock::now();
 
-    for (const auto &dims : grids) {
-      int M = dims.first;
-      int N = dims.second;
-      if (M < 2 || N < 2) {
-        throw std::runtime_error("Сетке нужны M,N >= 2");
-      }
+    Grid grid(A1, B1, A2, B2, M, N);
+    double h = std::max(grid.h1, grid.h2);
+    double epsilon = h * h;
+    ProblemData data = build_problem(grid, epsilon);
+    long long maxIt = static_cast<long long>((M - 1) * (N - 1));
+    RunConfig config{grid, DELTA, TAU, maxIt, epsilon};
 
-      Grid grid(A1, B1, A2, B2, M, N);
-      double h = std::max(grid.h1, grid.h2);
-      double epsilon = h * h;
-      ProblemData data = build_problem(grid, epsilon);
-      long long maxIt = static_cast<long long>((M - 1) * (N - 1));
-      RunConfig config{grid, DELTA, TAU, maxIt, epsilon};
+    auto grid_start = std::chrono::steady_clock::now();
+    RunResult result = solve_problem(config, data);
+    auto grid_end = std::chrono::steady_clock::now();
+    double grid_seconds =
+        std::chrono::duration<double>(grid_end - grid_start).count();
+    runtime_entries.push_back({M, N, grid_seconds});
 
-      auto grid_start = std::chrono::steady_clock::now();
-      RunResult result = solve_problem(config, data);
-      auto grid_end = std::chrono::steady_clock::now();
-      double grid_seconds =
-          std::chrono::duration<double>(grid_end - grid_start).count();
-      runtime_entries.push_back({M, N, grid_seconds});
+    std::string suffix = "_" + std::to_string(M) + "x" + std::to_string(N);
+    std::string solution_path = output_prefix + "solution" + suffix + ".csv";
+    std::string meta_path = output_prefix + "meta" + suffix + ".txt";
+    std::string run_log_path = output_prefix + "run" + suffix + ".log";
+    std::string mask_path = output_prefix + "mask" + suffix + ".csv";
+    write_solution_csv(solution_path, grid, result.solution);
+    write_meta_txt(meta_path, grid.A1, grid.B1, grid.A2, grid.B2, grid.M,
+                   grid.N, grid.h1, grid.h2, epsilon, config.delta, config.tau,
+                   config.maxIt, result.iterations, result.residual_norm,
+                   result.diff_norm, result.rhs_norm, result.stop_reason);
+    write_run_log(run_log_path, M, N, result.iteration_log, result.iterations,
+                  result.residual_norm, result.diff_norm);
+    write_mask_csv(mask_path, build_mask_entries(grid));
 
-      std::string suffix = "_" + std::to_string(M) + "x" + std::to_string(N);
-      std::string solution_path = output_prefix + "solution" + suffix + ".csv";
-      std::string meta_path = output_prefix + "meta" + suffix + ".txt";
-      std::string run_log_path = output_prefix + "run" + suffix + ".log";
-      std::string mask_path = output_prefix + "mask" + suffix + ".csv";
-      write_solution_csv(solution_path, grid, result.solution);
-      write_meta_txt(meta_path, grid.A1, grid.B1, grid.A2, grid.B2, grid.M,
-                     grid.N, grid.h1, grid.h2, epsilon, config.delta,
-                     config.tau, config.maxIt, result.iterations,
-                     result.residual_norm, result.diff_norm, result.rhs_norm,
-                     result.stop_reason);
-      write_run_log(run_log_path, M, N, result.iteration_log, result.iterations,
-                    result.residual_norm, result.diff_norm);
-      write_mask_csv(mask_path, build_mask_entries(grid));
+    summary.push_back({M, N, result.residual_norm});
 
-      summary.push_back({M, N, result.residual_norm});
-    }
-
-    write_summary_txt(output_prefix + "summary.txt", summary);
+    write_summary_txt(output_prefix + "summary" + suffix + ".txt", summary);
     auto end_time = std::chrono::steady_clock::now();
     double total_seconds =
         std::chrono::duration<double>(end_time - start_time).count();
-    write_runtime(output_prefix + "runtime.txt", runtime_entries,
+    write_runtime(output_prefix + "runtime" + suffix + ".txt", runtime_entries,
                   total_seconds);
   } catch (const std::exception &ex) {
     error_message = ex.what();

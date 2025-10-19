@@ -399,78 +399,73 @@ int main(int argc, char **argv) {
       throw std::runtime_error("Диапазоны по x или y заданы некорректно");
     }
 
-    const auto grids = parse_grid_arguments(argc, argv, default_grids());
+    const auto grids = parse_grid_arguments(argc, argv, default_grids(1));
 
-    for (const auto &dims : grids) {
-      int M = dims.first;
-      int N = dims.second;
-      if (M < 2 || N < 2) {
-        throw std::runtime_error("Сетке нужны M,N >= 2");
-      }
-
-      Grid grid(A1, B1, A2, B2, M, N);
-      double h = std::max(grid.h1, grid.h2);
-      double epsilon = h * h;
-      ProblemData data = build_problem(grid, epsilon);
-      long long maxIt = static_cast<long long>((M - 1) * (N - 1));
-      RunConfig config{grid, DELTA, TAU, maxIt, epsilon};
-
-      auto grid_start = std::chrono::steady_clock::now();
-      RunResult result = solve_problem(config, data);
-      auto grid_end = std::chrono::steady_clock::now();
-      double grid_seconds =
-          std::chrono::duration<double>(grid_end - grid_start).count();
-      runtime_entries.push_back({M, N, grid_seconds});
-
-      std::string suffix = "_" + std::to_string(M) + "x" + std::to_string(N);
-      std::string solution_path =
-          output_prefix + "seq_solution" + suffix + ".csv";
-      std::string meta_path = output_prefix + "seq_meta" + suffix + ".txt";
-      std::string run_log_path = output_prefix + "seq_run" + suffix + ".log";
-      std::string mask_path = output_prefix + "seq_mask" + suffix + ".csv";
-      write_solution_csv(solution_path, grid, result.solution);
-      write_meta_txt(meta_path, grid.A1, grid.B1, grid.A2, grid.B2, grid.M,
-                     grid.N, grid.h1, grid.h2, epsilon, config.delta,
-                     config.tau, config.maxIt, result.iterations,
-                     result.residual_norm, result.diff_norm, result.rhs_norm,
-                     result.stop_reason);
-      write_run_log(run_log_path, M, N, result.iteration_log, result.iterations,
-                    result.residual_norm, result.diff_norm);
-      write_mask_csv(mask_path, build_mask_entries(grid));
-
-      summary.push_back({M, N, result.residual_norm});
+    int M = grids.first;
+    int N = grids.second;
+    if (M < 2 || N < 2) {
+      throw std::runtime_error("Сетке нужны M,N >= 2");
     }
 
+    Grid grid(A1, B1, A2, B2, M, N);
+    double h = std::max(grid.h1, grid.h2);
+    double epsilon = h * h;
+    ProblemData data = build_problem(grid, epsilon);
+    long long maxIt = static_cast<long long>((M - 1) * (N - 1));
+    RunConfig config{grid, DELTA, TAU, maxIt, epsilon};
+
+    auto grid_start = std::chrono::steady_clock::now();
+    RunResult result = solve_problem(config, data);
+    auto grid_end = std::chrono::steady_clock::now();
+    double grid_seconds =
+        std::chrono::duration<double>(grid_end - grid_start).count();
+    runtime_entries.push_back({M, N, grid_seconds});
+
+    std::string suffix = "_" + std::to_string(M) + "x" + std::to_string(N);
+    std::string solution_path =
+        output_prefix + "seq_solution" + suffix + ".csv";
+    std::string meta_path = output_prefix + "seq_meta" + suffix + ".txt";
+    std::string run_log_path = output_prefix + "seq_run" + suffix + ".log";
+    std::string mask_path = output_prefix + "seq_mask" + suffix + ".csv";
+    write_solution_csv(solution_path, grid, result.solution);
+    write_meta_txt(meta_path, grid.A1, grid.B1, grid.A2, grid.B2, grid.M,
+                   grid.N, grid.h1, grid.h2, epsilon, config.delta, config.tau,
+                   config.maxIt, result.iterations, result.residual_norm,
+                   result.diff_norm, result.rhs_norm, result.stop_reason);
+    write_run_log(run_log_path, M, N, result.iteration_log, result.iterations,
+                  result.residual_norm, result.diff_norm);
+    write_mask_csv(mask_path, build_mask_entries(grid));
+
+    summary.push_back({M, N, result.residual_norm});
+
     write_summary_txt(output_prefix + "seq_summary.txt", summary);
+
+    auto overall_end = std::chrono::steady_clock::now();
+    std::chrono::duration<double> elapsed = overall_end - overall_start;
+    double elapsed_seconds = elapsed.count();
+
+    const std::string runtime_path =
+        output_prefix + "seq_runtime" + suffix + ".txt";
+
+    if (exit_code == EXIT_SUCCESS) {
+      write_runtime(runtime_path, runtime_entries, elapsed_seconds);
+    } else {
+      std::ofstream runtime_out(runtime_path.c_str());
+      if (runtime_out) {
+        runtime_out << std::scientific << std::setprecision(6);
+        runtime_out << "Total runtime: " << elapsed_seconds << " s\n";
+      }
+    }
+
   } catch (const std::exception &ex) {
     error_message = ex.what();
     exit_code = EXIT_FAILURE;
   }
-  auto overall_end = std::chrono::steady_clock::now();
-  std::chrono::duration<double> elapsed = overall_end - overall_start;
-  double elapsed_seconds = elapsed.count();
-
-  const std::string runtime_path = output_prefix + "seq_runtime.txt";
-  const std::string error_log_path = output_prefix + "seq_error.log";
-
-  if (exit_code == EXIT_SUCCESS) {
-    try {
-      write_runtime(runtime_path, runtime_entries, elapsed_seconds);
-    } catch (const std::exception &ex) {
-      error_message = ex.what();
-      exit_code = EXIT_FAILURE;
-    }
-  } else {
-    std::ofstream runtime_out(runtime_path.c_str());
-    if (runtime_out) {
-      runtime_out << std::scientific << std::setprecision(6);
-      runtime_out << "Total runtime: " << elapsed_seconds << " s\n";
-    }
-  }
 
   if (exit_code != EXIT_SUCCESS) {
-    write_error_log(error_log_path, error_message.empty() ? "Неизвестная ошибка"
-                                                          : error_message);
+    write_error_log(output_prefix + "seq_error.log", error_message.empty()
+                                                         ? "Неизвестная ошибка"
+                                                         : error_message);
   }
 
   return exit_code;

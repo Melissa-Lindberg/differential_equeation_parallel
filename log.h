@@ -54,8 +54,7 @@ void write_meta_txt(const std::string &filename, double A1, double B1,
                     double diff_norm, double rhs_norm,
                     const std::string &stop_reason);
 
-std::vector<std::pair<int, int>>
-parse_grid_arguments(int argc, char **argv,
-                     const std::vector<std::pair<int, int>> &defaults);
+std::pair<int, int> parse_grid_arguments(int argc, char **argv,
+                                         const std::pair<int, int> &defaults);
 
 int parse_thread_argument(int argc, char **argv, int default_threads);
