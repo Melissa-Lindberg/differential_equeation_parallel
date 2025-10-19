@@ -16,6 +16,12 @@ struct SummaryEntry {
     double residual;
 };
 
+struct RuntimeEntry {
+    int M;
+    int N;
+    double seconds;
+};
+
 struct MaskEntry {
     double x;
     double y;
@@ -32,7 +38,9 @@ void write_run_log(const std::string &filename,
 
 void write_summary_txt(const std::string &filename, const std::vector<SummaryEntry> &summary);
 
-void write_runtime(const std::string &filename, double seconds);
+void write_runtime(const std::string &filename,
+                   const std::vector<RuntimeEntry> &entries,
+                   double total_seconds);
 
 void write_error_log(const std::string &filename, const std::string &message);
 

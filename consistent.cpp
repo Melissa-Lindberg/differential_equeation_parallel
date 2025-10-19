@@ -392,6 +392,7 @@ int main() {
     int exit_code = EXIT_SUCCESS;
     std::string error_message;
     std::vector<SummaryEntry> summary;
+    std::vector<RuntimeEntry> runtime_entries;
     try {
         constexpr double A1 = -2.0;
         constexpr double B1 = 2.0;
@@ -420,7 +421,11 @@ int main() {
             long long maxIt = static_cast<long long>((M - 1) * (N - 1));
             RunConfig config{grid, DELTA, TAU, maxIt, epsilon};
 
+            auto grid_start = std::chrono::steady_clock::now();
             RunResult result = solve_problem(config, data);
+            auto grid_end = std::chrono::steady_clock::now();
+            double grid_seconds = std::chrono::duration<double>(grid_end - grid_start).count();
+            runtime_entries.push_back({M, N, grid_seconds});
 
             std::string suffix = "_" + std::to_string(M) + "x" + std::to_string(N);
             write_solution_csv("solution" + suffix + ".csv", grid, result.solution);
@@ -465,7 +470,7 @@ int main() {
 
     if (exit_code == EXIT_SUCCESS) {
         try {
-            write_runtime("runtime.txt", elapsed_seconds);
+            write_runtime("runtime.txt", runtime_entries, elapsed_seconds);
         } catch (const std::exception &ex) {
             error_message = ex.what();
             exit_code = EXIT_FAILURE;

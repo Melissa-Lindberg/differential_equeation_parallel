@@ -37,13 +37,19 @@ void write_summary_txt(const std::string &filename, const std::vector<SummaryEnt
     }
 }
 
-void write_runtime(const std::string &filename, double seconds) {
+void write_runtime(const std::string &filename,
+                   const std::vector<RuntimeEntry> &entries,
+                   double total_seconds) {
     std::ofstream out(filename);
     if (!out) {
         throw std::runtime_error("Не удалось открыть файл " + filename);
     }
     out << std::scientific << std::setprecision(6);
-    out << "Total runtime: " << seconds << " s\n";
+    out << "M,N,runtime_s\n";
+    for (const auto &entry : entries) {
+        out << entry.M << ',' << entry.N << ',' << entry.seconds << '\n';
+    }
+    out << "Total runtime: " << total_seconds << " s\n";
 }
 
 void write_error_log(const std::string &filename, const std::string &message) {
