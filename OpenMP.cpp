@@ -5,12 +5,15 @@
 #include <chrono>
 #include <iomanip>
 #include <algorithm>
+#include <atomic>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <omp.h>
 
-#include "consistent.h"
+#include "OpenMP.h"
 const std::vector<HalfPlane> &domain_halfplanes() {
     static const std::vector<HalfPlane> planes = {
         {+1.0, +1.0, 2.0},
@@ -154,9 +157,10 @@ ProblemData build_problem(const Grid &grid, double epsilon) {
     data.diag.assign(total_nodes, 0.0);
 
     // коэффициенты a_{i,j} для вертикальных граней
+    #pragma omp parallel for collapse(2) schedule(static)
     for (int i = 1; i <= grid.M; ++i) {
-        double xmid = grid.x_mid(i);
         for (int j = 1; j <= grid.N - 1; ++j) {
+            double xmid = grid.x_mid(i);
             Point p0{xmid, grid.y(j) - 0.5 * grid.h2};
             Point p1{xmid, grid.y(j) + 0.5 * grid.h2};
             double len = segment_length_in_D(p0, p1);
@@ -173,6 +177,7 @@ ProblemData build_problem(const Grid &grid, double epsilon) {
     }
 
     // коэффициенты b_{i,j} для горизонтальных граней
+    #pragma omp parallel for collapse(2) schedule(static)
     for (int i = 1; i <= grid.M - 1; ++i) {
         for (int j = 1; j <= grid.N; ++j) {
             Point p0{grid.x(i) - 0.5 * grid.h1, grid.y_mid(j)};
@@ -192,6 +197,7 @@ ProblemData build_problem(const Grid &grid, double epsilon) {
 
     // правая часть F_{i,j}
     double cell_area = grid.h1 * grid.h2;
+    #pragma omp parallel for collapse(2) schedule(static)
     for (int i = 1; i <= grid.M - 1; ++i) {
         for (int j = 1; j <= grid.N - 1; ++j) {
             double x_left = grid.x(i) - 0.5 * grid.h1;
@@ -213,6 +219,7 @@ ProblemData build_problem(const Grid &grid, double epsilon) {
     // диагональный предобуславливатель
     double inv_h1_sq = 1.0 / (grid.h1 * grid.h1);
     double inv_h2_sq = 1.0 / (grid.h2 * grid.h2);
+    #pragma omp parallel for collapse(2) schedule(static)
     for (int i = 1; i <= grid.M - 1; ++i) {
         for (int j = 1; j <= grid.N - 1; ++j) {
             std::size_t idx = grid.index(i, j);
@@ -228,6 +235,7 @@ ProblemData build_problem(const Grid &grid, double epsilon) {
 
 double inner_product(const Grid &grid, const std::vector<double> &u, const std::vector<double> &v) {
     double sum = 0.0;
+    #pragma omp parallel for reduction(+:sum) collapse(2) schedule(static)
     for (int j = 1; j <= grid.N - 1; ++j) {
         for (int i = 1; i <= grid.M - 1; ++i) {
             std::size_t idx = grid.index(i, j);
@@ -250,6 +258,7 @@ void apply_A(const Grid &grid,
     std::fill(out.begin(), out.end(), 0.0);
     double inv_h1_sq = 1.0 / (grid.h1 * grid.h1);
     double inv_h2_sq = 1.0 / (grid.h2 * grid.h2);
+    #pragma omp parallel for collapse(2) schedule(static)
     for (int j = 1; j <= grid.N - 1; ++j) {
         for (int i = 1; i <= grid.M - 1; ++i) {
             std::size_t idx = grid.index(i, j);
@@ -268,15 +277,24 @@ void apply_D_inv(const Grid &grid,
                  const std::vector<double> &in,
                  std::vector<double> &out) {
     std::fill(out.begin(), out.end(), 0.0);
+    std::atomic<bool> invalid_diag{false};
+    #pragma omp parallel for collapse(2) schedule(static)
     for (int j = 1; j <= grid.N - 1; ++j) {
         for (int i = 1; i <= grid.M - 1; ++i) {
+            if (invalid_diag.load(std::memory_order_relaxed)) {
+                continue;
+            }
             std::size_t idx = grid.index(i, j);
             double d = diag[idx];
             if (d <= 0.0) {
-                throw std::runtime_error("Диагональный элемент предобуславливателя не положителен");
+                invalid_diag.store(true, std::memory_order_relaxed);
+            } else {
+                out[idx] = in[idx] / d;
             }
-            out[idx] = in[idx] / d;
         }
+    }
+    if (invalid_diag.load(std::memory_order_relaxed)) {
+        throw std::runtime_error("Диагональный элемент предобуславливателя не положителен");
     }
 }
 
@@ -317,6 +335,7 @@ RunResult solve_problem(const RunConfig &config, const ProblemData &data) {
         }
         diff_norm = std::sqrt(p_norm_sq) * std::abs(alpha);
 
+        #pragma omp parallel for collapse(2) schedule(static)
         for (int j = 1; j <= grid.N - 1; ++j) {
             for (int i = 1; i <= grid.M - 1; ++i) {
                 std::size_t idx = grid.index(i, j);
@@ -374,14 +393,15 @@ void write_solution_csv(const std::string &filename, const Grid &grid, const std
 }
 
 std::vector<MaskEntry> build_mask_entries(const Grid &grid) {
-    std::vector<MaskEntry> entries;
-    entries.reserve(static_cast<std::size_t>(grid.M + 1) * static_cast<std::size_t>(grid.N + 1));
+    std::size_t total_nodes = static_cast<std::size_t>(grid.M + 1) * static_cast<std::size_t>(grid.N + 1);
+    std::vector<MaskEntry> entries(total_nodes);
+    #pragma omp parallel for collapse(2) schedule(static)
     for (int j = 0; j <= grid.N; ++j) {
-        double y_val = grid.y(j);
         for (int i = 0; i <= grid.M; ++i) {
+            std::size_t idx = grid.index(i, j);
             double x_val = grid.x(i);
-            bool inside = in_D(x_val, y_val);
-            entries.push_back(MaskEntry{x_val, y_val, inside});
+            double y_val = grid.y(j);
+            entries[idx] = MaskEntry{x_val, y_val, in_D(x_val, y_val)};
         }
     }
     return entries;
