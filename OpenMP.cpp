@@ -417,25 +417,19 @@ int main(int argc, char **argv) {
       throw std::runtime_error("Диапазоны по x или y заданы некорректно");
     }
 
-    int thread_count = 1;
-    if (argc > 1) {
-      thread_count = std::stoi(argv[1]);
-      if (thread_count <= 0) {
-        throw std::runtime_error(
-            "Количество потоков должно быть положительным");
-      }
-    }
-
+    int thread_count = parse_thread_argument(argc, argv, 1);
     omp_set_num_threads(thread_count);
     std::string output_prefix =
         output_dir + "/omp_t" + std::to_string(thread_count) + "_";
     current_error_log_path = output_prefix + "error.log";
 
+    const auto grids = parse_grid_arguments(argc, argv, default_grids());
+
     std::vector<SummaryEntry> summary;
     std::vector<RuntimeEntry> runtime_entries;
     auto start_time = std::chrono::steady_clock::now();
 
-    for (const auto &dims : default_grids()) {
+    for (const auto &dims : grids) {
       int M = dims.first;
       int N = dims.second;
       if (M < 2 || N < 2) {

@@ -120,3 +120,59 @@ void write_meta_txt(const std::string &filename, double A1, double B1,
   out << "rhs_norm=" << rhs_norm << '\n';
   out << "stop_reason=" << stop_reason << '\n';
 }
+
+std::vector<std::pair<int, int>>
+parse_grid_arguments(int argc, char **argv,
+                     const std::vector<std::pair<int, int>> &defaults) {
+  std::vector<std::pair<int, int>> grids;
+  for (int i = 1; i < argc; ++i) {
+    std::string arg = argv[i];
+    if (arg == "-g") {
+      if (i + 2 >= argc) {
+        throw std::runtime_error("После -g ожидаются два целых числа");
+      }
+      int M = std::stoi(argv[++i]);
+      int N = std::stoi(argv[++i]);
+      if (M < 2 || N < 2) {
+        throw std::runtime_error("Размеры сетки должны быть >= 2");
+      }
+      grids.emplace_back(M, N);
+    } else if (arg == "-t") {
+      if (i + 1 >= argc) {
+        throw std::runtime_error("После -t ожидается целое число");
+      }
+      ++i; // значение будет обработано в parse_thread_argument
+    } else if (arg.rfind('-', 0) == 0) {
+      throw std::runtime_error("Неизвестный аргумент: " + arg);
+    }
+  }
+  if (grids.empty()) {
+    return defaults;
+  }
+  return grids;
+}
+
+int parse_thread_argument(int argc, char **argv, int default_threads) {
+  int threads = default_threads;
+  for (int i = 1; i < argc; ++i) {
+    std::string arg = argv[i];
+    if (arg == "-t") {
+      if (i + 1 >= argc) {
+        throw std::runtime_error("После -t ожидается целое число");
+      }
+      threads = std::stoi(argv[++i]);
+      if (threads <= 0) {
+        throw std::runtime_error(
+            "Количество потоков должно быть положительным");
+      }
+    } else if (arg == "-g") {
+      if (i + 2 >= argc) {
+        throw std::runtime_error("После -g ожидаются два целых числа");
+      }
+      i += 2;
+    } else if (arg.rfind('-', 0) == 0) {
+      throw std::runtime_error("Неизвестный аргумент: " + arg);
+    }
+  }
+  return threads;
+}

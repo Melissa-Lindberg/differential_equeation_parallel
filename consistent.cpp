@@ -385,7 +385,7 @@ std::vector<MaskEntry> build_mask_entries(const Grid &grid) {
   return entries;
 }
 
-int main() {
+int main(int argc, char **argv) {
   auto overall_start = std::chrono::steady_clock::now();
   const std::string output_dir = "output";
   const std::string output_prefix = output_dir + "/";
@@ -399,7 +399,9 @@ int main() {
       throw std::runtime_error("Диапазоны по x или y заданы некорректно");
     }
 
-    for (const auto &dims : default_grids()) {
+    const auto grids = parse_grid_arguments(argc, argv, default_grids());
+
+    for (const auto &dims : grids) {
       int M = dims.first;
       int N = dims.second;
       if (M < 2 || N < 2) {
