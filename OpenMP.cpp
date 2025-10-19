@@ -14,15 +14,6 @@
 #include <vector>
 
 #include "OpenMP.h"
-const std::vector<HalfPlane> &domain_halfplanes() {
-  static const std::vector<HalfPlane> planes = {{+1.0, +1.0, 2.0},
-                                                {-1.0, +1.0, 2.0},
-                                                {+1.0, -1.0, 2.0},
-                                                {-1.0, -1.0, 2.0},
-                                                {0.0, +1.0, 1.0}};
-  return planes;
-}
-
 bool in_D(double x, double y) {
   Point p{x, y};
   for (const auto &hp : domain_halfplanes()) {
@@ -423,21 +414,11 @@ int main() {
   std::vector<RuntimeEntry> runtime_entries;
   try {
     ensure_directory(output_dir);
-    constexpr double A1 = -2.0;
-    constexpr double B1 = 2.0;
-    constexpr double A2 = -2.0;
-    constexpr double B2 = 2.0;
-    constexpr double DELTA = 1e-8;
-    constexpr double TAU = 1e-8;
-
     if (B1 <= A1 || B2 <= A2) {
       throw std::runtime_error("Диапазоны по x или y заданы некорректно");
     }
 
-    const std::vector<std::pair<int, int>> grids = {
-        {10, 10}, {20, 20}, {40, 40}, {400, 600}, {800, 1200}};
-
-    for (const auto &dims : grids) {
+    for (const auto &dims : default_grids()) {
       int M = dims.first;
       int N = dims.second;
       if (M < 2 || N < 2) {

@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <string>
 #include <vector>
+#include <utility>
 
 #include "log.h"
 
@@ -23,6 +24,31 @@ public:
 
   bool contains(const Point &p) const { return eval(p) <= EPS_GEOM; }
 };
+
+inline const std::vector<HalfPlane> &domain_halfplanes() {
+    static const std::vector<HalfPlane> planes = {
+        {+1.0, +1.0, 2.0},
+        {-1.0, +1.0, 2.0},
+        {+1.0, -1.0, 2.0},
+        {-1.0, -1.0, 2.0},
+        {0.0, +1.0, 1.0}
+    };
+    return planes;
+}
+
+constexpr double A1 = -2.0;
+constexpr double B1 = 2.0;
+constexpr double A2 = -2.0;
+constexpr double B2 = 2.0;
+constexpr double DELTA = 1e-8;
+constexpr double TAU = 1e-8;
+
+inline const std::vector<std::pair<int, int>> &default_grids() {
+    static const std::vector<std::pair<int, int>> grids = {
+        {10, 10}, {20, 20}, {40, 40}, {400, 600}, {800, 1200}
+    };
+    return grids;
+}
 
 class Grid {
 public:

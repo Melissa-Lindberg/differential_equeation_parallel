@@ -6,20 +6,12 @@
 #include <fstream>
 #include <iomanip>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "consistent.h"
-const std::vector<HalfPlane> &domain_halfplanes() {
-  static const std::vector<HalfPlane> planes = {{+1.0, +1.0, 2.0},
-                                                {-1.0, +1.0, 2.0},
-                                                {+1.0, -1.0, 2.0},
-                                                {-1.0, -1.0, 2.0},
-                                                {0.0, +1.0, 1.0}};
-  return planes;
-}
-
 bool in_D(double x, double y) {
   Point p{x, y};
   for (const auto &hp : domain_halfplanes()) {
@@ -395,28 +387,19 @@ std::vector<MaskEntry> build_mask_entries(const Grid &grid) {
 
 int main() {
   auto overall_start = std::chrono::steady_clock::now();
-  const std::string output_dir = "output/";
+  const std::string output_dir = "output";
+  const std::string output_prefix = output_dir + "/";
   int exit_code = EXIT_SUCCESS;
   std::string error_message;
   std::vector<SummaryEntry> summary;
   std::vector<RuntimeEntry> runtime_entries;
   try {
     ensure_directory(output_dir);
-    constexpr double A1 = -2.0;
-    constexpr double B1 = 2.0;
-    constexpr double A2 = -2.0;
-    constexpr double B2 = 2.0;
-    constexpr double DELTA = 1e-8;
-    constexpr double TAU = 1e-8;
-
     if (B1 <= A1 || B2 <= A2) {
       throw std::runtime_error("Диапазоны по x или y заданы некорректно");
     }
 
-    const std::vector<std::pair<int, int>> grids = {
-        {10, 10}, {20, 20}, {40, 40}, {400, 600}, {800, 1200}};
-
-    for (const auto &dims : grids) {
+    for (const auto &dims : default_grids()) {
       int M = dims.first;
       int N = dims.second;
       if (M < 2 || N < 2) {
@@ -438,23 +421,24 @@ int main() {
       runtime_entries.push_back({M, N, grid_seconds});
 
       std::string suffix = "_" + std::to_string(M) + "x" + std::to_string(N);
-      write_solution_csv(output_dir + "solution" + suffix + ".csv", grid,
-                         result.solution);
-      write_meta_txt(output_dir + "meta" + suffix + ".txt", grid.A1, grid.B1,
-                     grid.A2, grid.B2, grid.M, grid.N, grid.h1, grid.h2,
-                     epsilon, config.delta, config.tau, config.maxIt,
-                     result.iterations, result.residual_norm, result.diff_norm,
-                     result.rhs_norm, result.stop_reason);
-      write_run_log(output_dir + "run" + suffix + ".log", M, N,
-                    result.iteration_log, result.iterations,
+      std::string solution_path = output_prefix + "solution" + suffix + ".csv";
+      std::string meta_path = output_prefix + "meta" + suffix + ".txt";
+      std::string run_log_path = output_prefix + "run" + suffix + ".log";
+      std::string mask_path = output_prefix + "mask" + suffix + ".csv";
+      write_solution_csv(solution_path, grid, result.solution);
+      write_meta_txt(meta_path, grid.A1, grid.B1, grid.A2, grid.B2, grid.M,
+                     grid.N, grid.h1, grid.h2, epsilon, config.delta,
+                     config.tau, config.maxIt, result.iterations,
+                     result.residual_norm, result.diff_norm, result.rhs_norm,
+                     result.stop_reason);
+      write_run_log(run_log_path, M, N, result.iteration_log, result.iterations,
                     result.residual_norm, result.diff_norm);
-      write_mask_csv(output_dir + "mask" + suffix + ".csv",
-                     build_mask_entries(grid));
+      write_mask_csv(mask_path, build_mask_entries(grid));
 
       summary.push_back({M, N, result.residual_norm});
     }
 
-    write_summary_txt(output_dir + "summary.txt", summary);
+    write_summary_txt(output_prefix + "summary.txt", summary);
   } catch (const std::exception &ex) {
     error_message = ex.what();
     exit_code = EXIT_FAILURE;
@@ -463,16 +447,18 @@ int main() {
   std::chrono::duration<double> elapsed = overall_end - overall_start;
   double elapsed_seconds = elapsed.count();
 
+  const std::string runtime_path = output_prefix + "runtime.txt";
+  const std::string error_log_path = output_prefix + "error.log";
+
   if (exit_code == EXIT_SUCCESS) {
     try {
-      write_runtime(output_dir + "runtime.txt", runtime_entries,
-                    elapsed_seconds);
+      write_runtime(runtime_path, runtime_entries, elapsed_seconds);
     } catch (const std::exception &ex) {
       error_message = ex.what();
       exit_code = EXIT_FAILURE;
     }
   } else {
-    std::ofstream runtime_out(output_dir + "error.log");
+    std::ofstream runtime_out(runtime_path.c_str());
     if (runtime_out) {
       runtime_out << std::scientific << std::setprecision(6);
       runtime_out << "Total runtime: " << elapsed_seconds << " s\n";
@@ -480,9 +466,8 @@ int main() {
   }
 
   if (exit_code != EXIT_SUCCESS) {
-    write_error_log(output_dir + "error.log", error_message.empty()
-                                                  ? "Неизвестная ошибка"
-                                                  : error_message);
+    write_error_log(error_log_path, error_message.empty() ? "Неизвестная ошибка"
+                                                          : error_message);
   }
 
   return exit_code;
