@@ -38,4 +38,5 @@ $(OMP_OBJ_DIR):
 	@mkdir -p $@
 
 clean:
-	rm -rf $(OBJ_DIR) $(SEQ_TARGET) $(OMP_TARGET)
+	rm -rf $(OBJ_DIR) $(SEQ_TARGET) $(OMP_TARGET) output
+
