@@ -626,7 +626,7 @@ PartitionCheckResult check_partition(int M, int N, int Px, int Py, double rmin,
 
   report += "Условия выполнены: отношение узлов в пределах [" +
             std::to_string(rmin) + "," + std::to_string(rmax) +
-            "] и разброс узлов ≤ 1." + "\n";
+            "] и разброс узлов <= 1." + "\n";
   result.report = std::move(report);
   return result;
 }
