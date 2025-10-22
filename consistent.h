@@ -85,7 +85,7 @@ struct ProblemData {
   std::vector<double> diag;
 };
 
-struct RunConfig {
+struct Config {
   Grid grid;
   double delta;
   double tau;
@@ -93,7 +93,7 @@ struct RunConfig {
   double epsilon;
 };
 
-struct RunResult {
+struct Result {
   std::vector<double> solution;
   std::size_t iterations = 0;
   double residual_norm = 0.0;

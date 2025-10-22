@@ -137,7 +137,8 @@ double segment_length_in_D(const Point &p0, const Point &p1) {
   return length;
 }
 
-ProblemData build_problem(const Grid &grid, double epsilon) {
+ProblemData build_problem(const Grid &grid, double epsilon,
+                          const Partition &partition) {
   ProblemData data;
   std::size_t total_nodes = static_cast<std::size_t>(grid.M + 1) *
                             static_cast<std::size_t>(grid.N + 1);
@@ -146,143 +147,199 @@ ProblemData build_problem(const Grid &grid, double epsilon) {
   data.F.assign(total_nodes, 0.0);
   data.diag.assign(total_nodes, 0.0);
 
+  const auto &ranges = partition.ranges;
+  const int domain_count = static_cast<int>(ranges.size());
+
 // коэффициенты a_{i,j} для вертикальных граней
-#pragma omp parallel for collapse(2) schedule(static)
-  for (int i = 1; i <= grid.M; ++i) {
-    for (int j = 1; j <= grid.N - 1; ++j) {
+#pragma omp parallel for schedule(static)
+  for (int did = 0; did < domain_count; ++did) {
+    const auto &d = ranges[static_cast<std::size_t>(did)];
+    if (d.ai0 > d.ai1 || d.aj0 > d.aj1) {
+      continue;
+    }
+    for (int i = d.ai0; i <= d.ai1; ++i) {
       double xmid = grid.x_mid(i);
-      Point p0{xmid, grid.y(j) - 0.5 * grid.h2};
-      Point p1{xmid, grid.y(j) + 0.5 * grid.h2};
-      double len = segment_length_in_D(p0, p1);
-      double frac = len / grid.h2;
-      if (frac < 0.0) {
-        frac = 0.0;
+      for (int j = d.aj0; j <= d.aj1; ++j) {
+        Point p0{xmid, grid.y(j) - 0.5 * grid.h2};
+        Point p1{xmid, grid.y(j) + 0.5 * grid.h2};
+        double len = segment_length_in_D(p0, p1);
+        double frac = len / grid.h2;
+        if (frac < 0.0) {
+          frac = 0.0;
+        }
+        if (frac > 1.0) {
+          frac = 1.0;
+        }
+        double coeff = frac + (1.0 - frac) / epsilon;
+        data.a[grid.index(i, j)] = coeff;
       }
-      if (frac > 1.0) {
-        frac = 1.0;
-      }
-      double coeff = frac + (1.0 - frac) / epsilon;
-      data.a[grid.index(i, j)] = coeff;
     }
   }
 
 // коэффициенты b_{i,j} для горизонтальных граней
-#pragma omp parallel for collapse(2) schedule(static)
-  for (int i = 1; i <= grid.M - 1; ++i) {
-    for (int j = 1; j <= grid.N; ++j) {
-      Point p0{grid.x(i) - 0.5 * grid.h1, grid.y_mid(j)};
-      Point p1{grid.x(i) + 0.5 * grid.h1, grid.y_mid(j)};
-      double len = segment_length_in_D(p0, p1);
-      double frac = len / grid.h1;
-      if (frac < 0.0) {
-        frac = 0.0;
+#pragma omp parallel for schedule(static)
+  for (int did = 0; did < domain_count; ++did) {
+    const auto &d = ranges[static_cast<std::size_t>(did)];
+    if (d.bi0 > d.bi1 || d.bj0 > d.bj1) {
+      continue;
+    }
+    for (int i = d.bi0; i <= d.bi1; ++i) {
+      for (int j = d.bj0; j <= d.bj1; ++j) {
+        Point p0{grid.x(i) - 0.5 * grid.h1, grid.y_mid(j)};
+        Point p1{grid.x(i) + 0.5 * grid.h1, grid.y_mid(j)};
+        double len = segment_length_in_D(p0, p1);
+        double frac = len / grid.h1;
+        if (frac < 0.0) {
+          frac = 0.0;
+        }
+        if (frac > 1.0) {
+          frac = 1.0;
+        }
+        double coeff = frac + (1.0 - frac) / epsilon;
+        data.b[grid.index(i, j)] = coeff;
       }
-      if (frac > 1.0) {
-        frac = 1.0;
-      }
-      double coeff = frac + (1.0 - frac) / epsilon;
-      data.b[grid.index(i, j)] = coeff;
     }
   }
 
   // правая часть F_{i,j}
   double cell_area = grid.h1 * grid.h2;
-#pragma omp parallel for collapse(2) schedule(static)
-  for (int i = 1; i <= grid.M - 1; ++i) {
-    for (int j = 1; j <= grid.N - 1; ++j) {
-      double x_left = grid.x(i) - 0.5 * grid.h1;
-      double x_right = grid.x(i) + 0.5 * grid.h1;
-      double y_bottom = grid.y(j) - 0.5 * grid.h2;
-      double y_top = grid.y(j) + 0.5 * grid.h2;
-      double area = cell_area_in_D(x_left, x_right, y_bottom, y_top);
-      double ratio = area / cell_area;
-      if (ratio < 1e-12) {
-        ratio = 0.0;
+#pragma omp parallel for schedule(static)
+  for (int did = 0; did < domain_count; ++did) {
+    const auto &d = ranges[static_cast<std::size_t>(did)];
+    if (d.ii0 > d.ii1 || d.jj0 > d.jj1) {
+      continue;
+    }
+    for (int i = d.ii0; i <= d.ii1; ++i) {
+      for (int j = d.jj0; j <= d.jj1; ++j) {
+        double x_left = grid.x(i) - 0.5 * grid.h1;
+        double x_right = grid.x(i) + 0.5 * grid.h1;
+        double y_bottom = grid.y(j) - 0.5 * grid.h2;
+        double y_top = grid.y(j) + 0.5 * grid.h2;
+        double area = cell_area_in_D(x_left, x_right, y_bottom, y_top);
+        double ratio = area / cell_area;
+        if (ratio < 1e-12) {
+          ratio = 0.0;
+        }
+        if (ratio > 1.0 - 1e-12) {
+          ratio = 1.0;
+        }
+        data.F[grid.index(i, j)] = ratio;
       }
-      if (ratio > 1.0 - 1e-12) {
-        ratio = 1.0;
-      }
-      data.F[grid.index(i, j)] = ratio;
     }
   }
 
   // диагональный предобуславливатель
   double inv_h1_sq = 1.0 / (grid.h1 * grid.h1);
   double inv_h2_sq = 1.0 / (grid.h2 * grid.h2);
-#pragma omp parallel for collapse(2) schedule(static)
-  for (int i = 1; i <= grid.M - 1; ++i) {
-    for (int j = 1; j <= grid.N - 1; ++j) {
-      std::size_t idx = grid.index(i, j);
-      double val = 0.0;
-      val +=
-          (data.a[grid.index(i + 1, j)] + data.a[grid.index(i, j)]) * inv_h1_sq;
-      val +=
-          (data.b[grid.index(i, j + 1)] + data.b[grid.index(i, j)]) * inv_h2_sq;
-      data.diag[idx] = val;
+#pragma omp parallel for schedule(static)
+  for (int did = 0; did < domain_count; ++did) {
+    const auto &d = ranges[static_cast<std::size_t>(did)];
+    if (d.ii0 > d.ii1 || d.jj0 > d.jj1) {
+      continue;
+    }
+    for (int i = d.ii0; i <= d.ii1; ++i) {
+      for (int j = d.jj0; j <= d.jj1; ++j) {
+        std::size_t idx = grid.index(i, j);
+        double val = 0.0;
+        val += (data.a[grid.index(i + 1, j)] + data.a[grid.index(i, j)]) *
+               inv_h1_sq;
+        val += (data.b[grid.index(i, j + 1)] + data.b[grid.index(i, j)]) *
+               inv_h2_sq;
+        data.diag[idx] = val;
+      }
     }
   }
 
   return data;
 }
 
-double inner_product(const Grid &grid, const std::vector<double> &u,
+double inner_product(const Grid &grid, const Partition &partition,
+                     const std::vector<double> &u,
                      const std::vector<double> &v) {
   double sum = 0.0;
-#pragma omp parallel for reduction(+ : sum) collapse(2) schedule(static)
-  for (int j = 1; j <= grid.N - 1; ++j) {
-    for (int i = 1; i <= grid.M - 1; ++i) {
-      std::size_t idx = grid.index(i, j);
-      sum += u[idx] * v[idx];
+  const auto &ranges = partition.ranges;
+  const int domain_count = static_cast<int>(ranges.size());
+#pragma omp parallel for reduction(+ : sum) schedule(static)
+  for (int did = 0; did < domain_count; ++did) {
+    const auto &d = ranges[static_cast<std::size_t>(did)];
+    if (d.ii0 > d.ii1 || d.jj0 > d.jj1) {
+      continue;
     }
+    double local_sum = 0.0;
+    for (int j = d.jj0; j <= d.jj1; ++j) {
+      for (int i = d.ii0; i <= d.ii1; ++i) {
+        std::size_t idx = grid.index(i, j);
+        local_sum += u[idx] * v[idx];
+      }
+    }
+    sum += local_sum;
   }
   return sum * grid.h1 * grid.h2;
 }
 
-double norm_E(const Grid &grid, const std::vector<double> &u) {
-  double sq = inner_product(grid, u, u);
+double norm_E(const Grid &grid, const Partition &partition,
+              const std::vector<double> &u) {
+  double sq = inner_product(grid, partition, u, u);
   return std::sqrt(sq);
 }
 
-void apply_A(const Grid &grid, const std::vector<double> &a,
-             const std::vector<double> &b, const std::vector<double> &w,
-             std::vector<double> &out) {
+void apply_A(const Grid &grid, const Partition &partition,
+             const std::vector<double> &a, const std::vector<double> &b,
+             const std::vector<double> &w, std::vector<double> &out) {
   std::fill(out.begin(), out.end(), 0.0);
   double inv_h1_sq = 1.0 / (grid.h1 * grid.h1);
   double inv_h2_sq = 1.0 / (grid.h2 * grid.h2);
-#pragma omp parallel for collapse(2) schedule(static)
-  for (int j = 1; j <= grid.N - 1; ++j) {
-    for (int i = 1; i <= grid.M - 1; ++i) {
-      std::size_t idx = grid.index(i, j);
-      double w_ij = w[idx];
-      double term_x =
-          (a[grid.index(i + 1, j)] * (w[grid.index(i + 1, j)] - w_ij) -
-           a[grid.index(i, j)] * (w_ij - w[grid.index(i - 1, j)])) *
-          inv_h1_sq;
-      double term_y =
-          (b[grid.index(i, j + 1)] * (w[grid.index(i, j + 1)] - w_ij) -
-           b[grid.index(i, j)] * (w_ij - w[grid.index(i, j - 1)])) *
-          inv_h2_sq;
-      out[idx] = -(term_x + term_y);
+  const auto &ranges = partition.ranges;
+  const int domain_count = static_cast<int>(ranges.size());
+#pragma omp parallel for schedule(static)
+  for (int did = 0; did < domain_count; ++did) {
+    const auto &d = ranges[static_cast<std::size_t>(did)];
+    if (d.ii0 > d.ii1 || d.jj0 > d.jj1) {
+      continue;
+    }
+    for (int j = d.jj0; j <= d.jj1; ++j) {
+      for (int i = d.ii0; i <= d.ii1; ++i) {
+        std::size_t idx = grid.index(i, j);
+        double w_ij = w[idx];
+        double term_x =
+            (a[grid.index(i + 1, j)] * (w[grid.index(i + 1, j)] - w_ij) -
+             a[grid.index(i, j)] * (w_ij - w[grid.index(i - 1, j)])) *
+            inv_h1_sq;
+        double term_y =
+            (b[grid.index(i, j + 1)] * (w[grid.index(i, j + 1)] - w_ij) -
+             b[grid.index(i, j)] * (w_ij - w[grid.index(i, j - 1)])) *
+            inv_h2_sq;
+        out[idx] = -(term_x + term_y);
+      }
     }
   }
 }
 
-void apply_D_inv(const Grid &grid, const std::vector<double> &diag,
-                 const std::vector<double> &in, std::vector<double> &out) {
+void apply_D_inv(const Grid &grid, const Partition &partition,
+                 const std::vector<double> &diag, const std::vector<double> &in,
+                 std::vector<double> &out) {
   std::fill(out.begin(), out.end(), 0.0);
   std::atomic<bool> invalid_diag{false};
-#pragma omp parallel for collapse(2) schedule(static)
-  for (int j = 1; j <= grid.N - 1; ++j) {
-    for (int i = 1; i <= grid.M - 1; ++i) {
-      if (invalid_diag.load(std::memory_order_relaxed)) {
-        continue;
-      }
-      std::size_t idx = grid.index(i, j);
-      double d = diag[idx];
-      if (d <= 0.0) {
-        invalid_diag.store(true, std::memory_order_relaxed);
-      } else {
-        out[idx] = in[idx] / d;
+  const auto &ranges = partition.ranges;
+  const int domain_count = static_cast<int>(ranges.size());
+#pragma omp parallel for schedule(static)
+  for (int did = 0; did < domain_count; ++did) {
+    const auto &d = ranges[static_cast<std::size_t>(did)];
+    if (d.ii0 > d.ii1 || d.jj0 > d.jj1) {
+      continue;
+    }
+    for (int j = d.jj0; j <= d.jj1; ++j) {
+      for (int i = d.ii0; i <= d.ii1; ++i) {
+        if (invalid_diag.load(std::memory_order_relaxed)) {
+          continue;
+        }
+        std::size_t idx = grid.index(i, j);
+        double dval = diag[idx];
+        if (dval <= 0.0) {
+          invalid_diag.store(true, std::memory_order_relaxed);
+        } else {
+          out[idx] = in[idx] / dval;
+        }
       }
     }
   }
@@ -292,7 +349,8 @@ void apply_D_inv(const Grid &grid, const std::vector<double> &diag,
   }
 }
 
-RunResult solve_problem(const RunConfig &config, const ProblemData &data) {
+Result solve_problem(const Config &config, const Partition &partition,
+                     const ProblemData &data) {
   const Grid &grid = config.grid;
   std::size_t total_nodes = static_cast<std::size_t>(grid.M + 1) *
                             static_cast<std::size_t>(grid.N + 1);
@@ -302,44 +360,53 @@ RunResult solve_problem(const RunConfig &config, const ProblemData &data) {
   std::vector<double> p(total_nodes, 0.0);
   std::vector<double> Ap(total_nodes, 0.0);
 
-  double rhs_norm = norm_E(grid, data.F);
+  const auto &ranges = partition.ranges;
+  const int domain_count = static_cast<int>(ranges.size());
+
+  double rhs_norm = norm_E(grid, partition, data.F);
   double rhs_norm_safe = rhs_norm == 0.0 ? 1.0 : rhs_norm;
 
-  double residual_norm = norm_E(grid, r);
+  double residual_norm = norm_E(grid, partition, r);
   double diff_norm = std::numeric_limits<double>::infinity();
   std::vector<IterationLogEntry> iteration_log;
   std::size_t iter = 0;
   std::string stop_reason;
 
   while (iter < static_cast<std::size_t>(config.maxIt)) {
-    apply_D_inv(grid, data.diag, r, z);
+    apply_D_inv(grid, partition, data.diag, r, z);
     p = z;
-    apply_A(grid, data.a, data.b, p, Ap);
+    apply_A(grid, partition, data.a, data.b, p, Ap);
 
-    double numerator = inner_product(grid, z, r);
-    double denominator = inner_product(grid, Ap, p);
+    double numerator = inner_product(grid, partition, z, r);
+    double denominator = inner_product(grid, partition, Ap, p);
     if (std::abs(denominator) < 1e-30) {
       stop_reason = "denominator<=0";
       break;
     }
     double alpha = numerator / denominator;
-    double p_norm_sq = inner_product(grid, p, p);
+    double p_norm_sq = inner_product(grid, partition, p, p);
     if (p_norm_sq < 1e-30) {
       stop_reason = "direction_norm~0";
       break;
     }
     diff_norm = std::sqrt(p_norm_sq) * std::abs(alpha);
 
-#pragma omp parallel for collapse(2) schedule(static)
-    for (int j = 1; j <= grid.N - 1; ++j) {
-      for (int i = 1; i <= grid.M - 1; ++i) {
-        std::size_t idx = grid.index(i, j);
-        w[idx] += alpha * p[idx];
-        r[idx] -= alpha * Ap[idx];
+#pragma omp parallel for schedule(static)
+    for (int did = 0; did < domain_count; ++did) {
+      const auto &d = ranges[static_cast<std::size_t>(did)];
+      if (d.ii0 > d.ii1 || d.jj0 > d.jj1) {
+        continue;
+      }
+      for (int j = d.jj0; j <= d.jj1; ++j) {
+        for (int i = d.ii0; i <= d.ii1; ++i) {
+          std::size_t idx = grid.index(i, j);
+          w[idx] += alpha * p[idx];
+          r[idx] -= alpha * Ap[idx];
+        }
       }
     }
 
-    residual_norm = norm_E(grid, r);
+    residual_norm = norm_E(grid, partition, r);
     ++iter;
     iteration_log.push_back({iter, residual_norm, alpha});
 
@@ -361,7 +428,7 @@ RunResult solve_problem(const RunConfig &config, const ProblemData &data) {
     }
   }
 
-  RunResult result;
+  Result result;
   result.solution = std::move(w);
   result.iterations = iter;
   result.residual_norm = residual_norm;
@@ -404,6 +471,166 @@ std::vector<MaskEntry> build_mask_entries(const Grid &grid) {
   return entries;
 }
 
+std::vector<int> make_blocks(int total_nodes, int parts) {
+  if (parts <= 0) {
+    return {};
+  }
+  std::vector<int> result(static_cast<std::size_t>(parts), 0);
+  int q = total_nodes / parts;
+  int r = total_nodes % parts;
+  for (int i = 0; i < parts; ++i) {
+    result[static_cast<std::size_t>(i)] = q + (i < r ? 1 : 0);
+  }
+  return result;
+}
+
+Partition build_partition_with_ranges(int M, int N, int Px, int Py) {
+  Partition partition;
+  partition.Px = Px;
+  partition.Py = Py;
+  if (Px <= 0 || Py <= 0) {
+    return partition;
+  }
+
+  std::vector<int> nx = make_blocks(M + 1, Px);
+  std::vector<int> ny = make_blocks(N + 1, Py);
+  if (nx.size() != static_cast<std::size_t>(Px) ||
+      ny.size() != static_cast<std::size_t>(Py)) {
+    return partition;
+  }
+
+  partition.blocks.reserve(static_cast<std::size_t>(Px * Py));
+  partition.ranges.reserve(static_cast<std::size_t>(Px * Py));
+
+  std::vector<int> xcuts(static_cast<std::size_t>(Px + 1), 0);
+  std::vector<int> ycuts(static_cast<std::size_t>(Py + 1), 0);
+  for (int i = 0; i < Px; ++i) {
+    xcuts[static_cast<std::size_t>(i + 1)] =
+        xcuts[static_cast<std::size_t>(i)] + nx[static_cast<std::size_t>(i)];
+  }
+  for (int j = 0; j < Py; ++j) {
+    ycuts[static_cast<std::size_t>(j + 1)] =
+        ycuts[static_cast<std::size_t>(j)] + ny[static_cast<std::size_t>(j)];
+  }
+
+  for (int j = 0; j < Py; ++j) {
+    for (int i = 0; i < Px; ++i) {
+      DomainBlock block{nx[static_cast<std::size_t>(i)],
+                        ny[static_cast<std::size_t>(j)]};
+      partition.blocks.push_back(block);
+
+      DomainRange range{};
+      range.ix0 = xcuts[static_cast<std::size_t>(i)];
+      range.ix1 = xcuts[static_cast<std::size_t>(i + 1)] - 1;
+      range.iy0 = ycuts[static_cast<std::size_t>(j)];
+      range.iy1 = ycuts[static_cast<std::size_t>(j + 1)] - 1;
+
+      range.ii0 = std::max(1, range.ix0);
+      range.ii1 = std::min(M - 1, range.ix1);
+      range.jj0 = std::max(1, range.iy0);
+      range.jj1 = std::min(N - 1, range.iy1);
+
+      range.ai0 = std::max(1, range.ix0);
+      range.ai1 = std::min(M, range.ix1);
+      range.aj0 = std::max(1, range.iy0);
+      range.aj1 = std::min(N - 1, range.iy1);
+
+      range.bi0 = std::max(1, range.ix0);
+      range.bi1 = std::min(M - 1, range.ix1);
+      range.bj0 = std::max(1, range.iy0);
+      range.bj1 = std::min(N, range.iy1);
+
+      partition.ranges.push_back(range);
+    }
+  }
+
+  return partition;
+}
+
+PartitionCheckResult check_partition(int M, int N, int Px, int Py, double rmin,
+                                     double rmax) {
+  if (M < 1 || N < 1) {
+    throw std::runtime_error("Размеры сетки должны быть >=1");
+  }
+  if (Px < 1 || Py < 1) {
+    throw std::runtime_error("Px и Py должны быть положительными");
+  }
+  if (Px > M + 1) {
+    throw std::runtime_error("Px превышает M+1");
+  }
+  if (Py > N + 1) {
+    throw std::runtime_error("Py превышает N+1");
+  }
+
+  PartitionCheckResult result;
+  result.partition = build_partition_with_ranges(M, N, Px, Py);
+  std::size_t expected_size = static_cast<std::size_t>(Px * Py);
+  if (result.partition.blocks.size() != expected_size ||
+      result.partition.ranges.size() != expected_size) {
+    throw std::runtime_error("Не удалось построить полное разбиение");
+  }
+
+  const double tol = 1e-12;
+  int min_nx = result.partition.blocks.front().nodes_x;
+  int max_nx = result.partition.blocks.front().nodes_x;
+  int min_ny = result.partition.blocks.front().nodes_y;
+  int max_ny = result.partition.blocks.front().nodes_y;
+  bool ratio_violation = false;
+
+  std::string report;
+  report += "Сетка " + std::to_string(M) + "x" + std::to_string(N) +
+            ", разбиение " + std::to_string(Px) + "x" + std::to_string(Py) +
+            "\n";
+  report += "Домены:\n";
+
+  for (int j = 0; j < Py; ++j) {
+    for (int i = 0; i < Px; ++i) {
+      std::size_t idx = static_cast<std::size_t>(j * Px + i);
+      const auto &block = result.partition.blocks[idx];
+      const auto &range = result.partition.ranges[idx];
+      min_nx = std::min(min_nx, block.nodes_x);
+      max_nx = std::max(max_nx, block.nodes_x);
+      min_ny = std::min(min_ny, block.nodes_y);
+      max_ny = std::max(max_ny, block.nodes_y);
+      double ratio = block.nodes_y == 0
+                         ? std::numeric_limits<double>::infinity()
+                         : static_cast<double>(block.nodes_x) /
+                               static_cast<double>(block.nodes_y);
+      bool ratio_ok = ratio >= rmin - tol && ratio <= rmax + tol;
+      char ratio_buf[64];
+      std::snprintf(ratio_buf, sizeof(ratio_buf), "%.6f", ratio);
+      report += "  (" + std::to_string(i) + "," + std::to_string(j) +
+                "): nx=" + std::to_string(block.nodes_x) +
+                " ny=" + std::to_string(block.nodes_y) + " nx/ny=" + ratio_buf +
+                " диапазоны i=[" + std::to_string(range.ix0) + ".." +
+                std::to_string(range.ix1) + "] j=[" +
+                std::to_string(range.iy0) + ".." + std::to_string(range.iy1) +
+                "]";
+      if (!ratio_ok) {
+        report += " [нарушение отношения]";
+        ratio_violation = true;
+      }
+      report += "\n";
+    }
+  }
+
+  if (ratio_violation) {
+    throw std::runtime_error("Нарушено условие отношения узлов");
+  }
+  if (max_nx - min_nx > 1) {
+    throw std::runtime_error("Разброс размеров по x превышает 1");
+  }
+  if (max_ny - min_ny > 1) {
+    throw std::runtime_error("Разброс размеров по y превышает 1");
+  }
+
+  report += "Условия выполнены: отношение узлов в пределах [" +
+            std::to_string(rmin) + "," + std::to_string(rmax) +
+            "] и разброс узлов ≤ 1." + "\n";
+  result.report = std::move(report);
+  return result;
+}
+
 int main(int argc, char **argv) {
   const std::string output_dir = "output";
   ensure_directory(output_dir);
@@ -423,12 +650,18 @@ int main(int argc, char **argv) {
         output_dir + "/omp_t" + std::to_string(thread_count) + "_";
     current_error_log_path = output_prefix + "error.log";
 
-    const auto grids = parse_grid_arguments(argc, argv, default_grids(1));
-    int M = grids.first;
-    int N = grids.second;
+    const auto grid_dims = parse_grid_arguments(argc, argv, default_grids(0));
+    int M = grid_dims.first;
+    int N = grid_dims.second;
     if (M < 2 || N < 2) {
       throw std::runtime_error("Сетке нужны M,N >= 2");
     }
+
+    auto partition_guess = parse_px_py_or_defaults(argc, argv, M, N);
+    int Px = partition_guess.first;
+    int Py = partition_guess.second;
+    auto part_check = check_partition(M, N, Px, Py);
+    Partition partition = std::move(part_check.partition);
 
     std::vector<SummaryEntry> summary;
     std::vector<RuntimeEntry> runtime_entries;
@@ -437,12 +670,12 @@ int main(int argc, char **argv) {
     Grid grid(A1, B1, A2, B2, M, N);
     double h = std::max(grid.h1, grid.h2);
     double epsilon = h * h;
-    ProblemData data = build_problem(grid, epsilon);
+    ProblemData data = build_problem(grid, epsilon, partition);
     long long maxIt = static_cast<long long>((M - 1) * (N - 1));
-    RunConfig config{grid, DELTA, TAU, maxIt, epsilon};
+    Config config{grid, DELTA, TAU, maxIt, epsilon};
 
     auto grid_start = std::chrono::steady_clock::now();
-    RunResult result = solve_problem(config, data);
+    Result result = solve_problem(config, partition, data);
     auto grid_end = std::chrono::steady_clock::now();
     double grid_seconds =
         std::chrono::duration<double>(grid_end - grid_start).count();
@@ -453,6 +686,10 @@ int main(int argc, char **argv) {
     std::string meta_path = output_prefix + "meta" + suffix + ".txt";
     std::string run_log_path = output_prefix + "run" + suffix + ".log";
     std::string mask_path = output_prefix + "mask" + suffix + ".csv";
+    std::string partition_report_path =
+        output_prefix + "partition" + suffix + ".txt";
+    write_partition_log(partition_report_path, part_check.report);
+
     write_solution_csv(solution_path, grid, result.solution);
     write_meta_txt(meta_path, grid.A1, grid.B1, grid.A2, grid.B2, grid.M,
                    grid.N, grid.h1, grid.h2, epsilon, config.delta, config.tau,

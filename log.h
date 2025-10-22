@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <string>
+#include <utility>
 #include <vector>
 
 struct IterationLogEntry {
@@ -44,6 +45,9 @@ void write_runtime(const std::string &filename,
 
 void write_error_log(const std::string &filename, const std::string &message);
 
+void write_partition_log(const std::string &filename,
+                         const std::string &report);
+
 void write_mask_csv(const std::string &filename,
                     const std::vector<MaskEntry> &mask_entries);
 
@@ -58,3 +62,6 @@ std::pair<int, int> parse_grid_arguments(int argc, char **argv,
                                          const std::pair<int, int> &defaults);
 
 int parse_thread_argument(int argc, char **argv, int default_threads);
+
+std::pair<int, int> parse_px_py_or_defaults(int argc, char **argv, int M,
+                                            int N);

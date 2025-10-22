@@ -1,8 +1,12 @@
 #include "log.h"
 
+#include "OpenMP.h"
+
 #include <cerrno>
+#include <cstdlib>
 #include <fstream>
 #include <iomanip>
+#include <limits>
 #include <stdexcept>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -77,6 +81,15 @@ void write_error_log(const std::string &filename, const std::string &message) {
     return;
   }
   out << "Ошибка: " << message << '\n';
+}
+
+void write_partition_log(const std::string &filename,
+                         const std::string &report) {
+  std::ofstream out(filename);
+  if (!out) {
+    throw std::runtime_error("Не удалось открыть файл " + filename);
+  }
+  out << report;
 }
 
 void write_mask_csv(const std::string &filename,
@@ -182,4 +195,63 @@ int parse_thread_argument(int argc, char **argv, int default_threads) {
     }
   }
   return threads;
+}
+
+std::pair<int, int> parse_px_py_or_defaults(int argc, char **argv, int M,
+                                            int N) {
+  auto parse_positive = [](const char *text, int &out) -> bool {
+    if (!text) {
+      return false;
+    }
+    char *end = nullptr;
+    errno = 0;
+    long value = std::strtol(text, &end, 10);
+    if (errno != 0 || end == text || (end && *end != '\0')) {
+      return false;
+    }
+    if (value <= 0 || value > std::numeric_limits<int>::max()) {
+      return false;
+    }
+    out = static_cast<int>(value);
+    return true;
+  };
+
+  int px = 0;
+  int py = 0;
+  bool px_ok = false;
+  bool py_ok = false;
+
+  for (int i = 1; i < argc; ++i) {
+    std::string arg = argv[i] ? argv[i] : "";
+    if (arg == "-px") {
+      if (i + 1 < argc) {
+        int value = 0;
+        if (parse_positive(argv[i + 1], value)) {
+          px = value;
+          px_ok = true;
+        }
+        ++i;
+      }
+    } else if (arg == "-py") {
+      if (i + 1 < argc) {
+        int value = 0;
+        if (parse_positive(argv[i + 1], value)) {
+          py = value;
+          py_ok = true;
+        }
+        ++i;
+      }
+    }
+  }
+
+  if (px_ok && py_ok) {
+    return {px, py};
+  }
+
+  auto defaults = default_partition_for(M, N);
+  if (defaults.first > 0 && defaults.second > 0) {
+    return defaults;
+  }
+
+  return {1, 1};
 }

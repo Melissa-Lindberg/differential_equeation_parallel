@@ -275,7 +275,7 @@ void apply_D_inv(const Grid &grid, const std::vector<double> &diag,
   }
 }
 
-RunResult solve_problem(const RunConfig &config, const ProblemData &data) {
+Result solve_problem(const Config &config, const ProblemData &data) {
   const Grid &grid = config.grid;
   std::size_t total_nodes = static_cast<std::size_t>(grid.M + 1) *
                             static_cast<std::size_t>(grid.N + 1);
@@ -343,7 +343,7 @@ RunResult solve_problem(const RunConfig &config, const ProblemData &data) {
     }
   }
 
-  RunResult result;
+  Result result;
   result.solution = std::move(w);
   result.iterations = iter;
   result.residual_norm = residual_norm;
@@ -412,10 +412,10 @@ int main(int argc, char **argv) {
     double epsilon = h * h;
     ProblemData data = build_problem(grid, epsilon);
     long long maxIt = static_cast<long long>((M - 1) * (N - 1));
-    RunConfig config{grid, DELTA, TAU, maxIt, epsilon};
+    Config config{grid, DELTA, TAU, maxIt, epsilon};
 
     auto grid_start = std::chrono::steady_clock::now();
-    RunResult result = solve_problem(config, data);
+    Result result = solve_problem(config, data);
     auto grid_end = std::chrono::steady_clock::now();
     double grid_seconds =
         std::chrono::duration<double>(grid_end - grid_start).count();
