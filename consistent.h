@@ -47,6 +47,20 @@ inline const std::pair<int, int> &default_grids(size_t number) {
   return grids.at(number);
 }
 
+inline std::pair<int, int> default_partition_for(int M, int N) {
+  if (M == 10 && N == 10)
+    return {2, 2};
+  if (M == 20 && N == 20)
+    return {4, 4};
+  if (M == 40 && N == 40)
+    return {8, 8};
+  if (M == 400 && N == 600)
+    return {8, 12};
+  if (M == 800 && N == 1200)
+    return {16, 24};
+  return {0, 0};
+}
+
 class Grid {
 public:
   double A1;
@@ -93,6 +107,32 @@ struct Config {
   double epsilon;
 };
 
+struct DomainBlock {
+  int nodes_x;
+  int nodes_y;
+};
+
+struct DomainRange {
+  int ix0, ix1;
+  int iy0, iy1;
+  int ii0, ii1;
+  int jj0, jj1;
+  int ai0, ai1, aj0, aj1;
+  int bi0, bi1, bj0, bj1;
+};
+
+struct Partition {
+  int Px;
+  int Py;
+  std::vector<DomainBlock> blocks;
+  std::vector<DomainRange> ranges;
+};
+
+struct PartitionCheckResult {
+  Partition partition;
+  std::string report;
+};
+
 struct Result {
   std::vector<double> solution;
   std::size_t iterations = 0;
@@ -102,3 +142,8 @@ struct Result {
   std::string stop_reason;
   std::vector<IterationLogEntry> iteration_log;
 };
+
+std::vector<int> make_blocks(int total_nodes, int parts);
+Partition build_partition_with_ranges(int M, int N, int Px, int Py);
+PartitionCheckResult check_partition(int M, int N, int Px, int Py,
+                                     double rmin = 0.5, double rmax = 2.0);
