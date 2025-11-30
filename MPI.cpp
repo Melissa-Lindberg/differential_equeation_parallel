@@ -205,11 +205,11 @@ LocalProblemData build_local_problem(const Grid &grid, double epsilon,
   data.diag = make_distributed_vector(local_range, 1);
 
   // коэффициенты a_{i,j}
-  for (int j_local = -data.a.halo;
-       j_local < data.a.local_ny + data.a.halo; ++j_local) {
+  for (int j_local = -data.a.halo; j_local < data.a.local_ny + data.a.halo;
+       ++j_local) {
     int j_global = local_range.iy0 + j_local;
-    for (int i_local = -data.a.halo;
-         i_local < data.a.local_nx + data.a.halo; ++i_local) {
+    for (int i_local = -data.a.halo; i_local < data.a.local_nx + data.a.halo;
+         ++i_local) {
       int i_global = local_range.ix0 + i_local;
       double value = 0.0;
       if (i_global >= 1 && i_global <= grid.M && j_global >= 1 &&
@@ -232,11 +232,11 @@ LocalProblemData build_local_problem(const Grid &grid, double epsilon,
   }
 
   // коэффициенты b_{i,j}
-  for (int j_local = -data.b.halo;
-       j_local < data.b.local_ny + data.b.halo; ++j_local) {
+  for (int j_local = -data.b.halo; j_local < data.b.local_ny + data.b.halo;
+       ++j_local) {
     int j_global = local_range.iy0 + j_local;
-    for (int i_local = -data.b.halo;
-         i_local < data.b.local_nx + data.b.halo; ++i_local) {
+    for (int i_local = -data.b.halo; i_local < data.b.local_nx + data.b.halo;
+         ++i_local) {
       int i_global = local_range.ix0 + i_local;
       double value = 0.0;
       if (i_global >= 1 && i_global <= grid.M - 1 && j_global >= 1 &&
@@ -280,8 +280,8 @@ LocalProblemData build_local_problem(const Grid &grid, double epsilon,
   // Диагональный предобуславливатель
   double inv_h1_sq = 1.0 / (grid.h1 * grid.h1);
   double inv_h2_sq = 1.0 / (grid.h2 * grid.h2);
-  if (!(local_range.ii0 > local_range.ii1 || local_range.jj0 >
-                                         local_range.jj1)) {
+  if (!(local_range.ii0 > local_range.ii1 ||
+        local_range.jj0 > local_range.jj1)) {
     for (int j = local_range.jj0; j <= local_range.jj1; ++j) {
       int j_local = j - local_range.iy0;
       for (int i = local_range.ii0; i <= local_range.ii1; ++i) {
@@ -302,8 +302,7 @@ LocalProblemData build_local_problem(const Grid &grid, double epsilon,
 double inner_product_local(const Grid &grid, const DomainRange &local_range,
                            const DistributedVector &u,
                            const DistributedVector &v) {
-  if (local_range.ii0 > local_range.ii1 || local_range.jj0 >
-                                          local_range.jj1) {
+  if (local_range.ii0 > local_range.ii1 || local_range.jj0 > local_range.jj1) {
     return 0.0;
   }
   double sum = 0.0;
@@ -338,8 +337,7 @@ void apply_A_local(const Grid &grid, const DomainRange &local_range,
                    const DistributedVector &w_local,
                    DistributedVector &out_local) {
   out_local.fill(0.0);
-  if (local_range.ii0 > local_range.ii1 || local_range.jj0 >
-                                          local_range.jj1) {
+  if (local_range.ii0 > local_range.ii1 || local_range.jj0 > local_range.jj1) {
     return;
   }
   double inv_h1_sq = 1.0 / (grid.h1 * grid.h1);
@@ -349,18 +347,16 @@ void apply_A_local(const Grid &grid, const DomainRange &local_range,
     for (int i = local_range.ii0; i <= local_range.ii1; ++i) {
       int i_local = i - local_range.ix0;
       double w_ij = w_local.at(i_local, j_local);
-      double term_x =
-          (a_local.at(i_local + 1, j_local) *
-               (w_local.at(i_local + 1, j_local) - w_ij) -
-           a_local.at(i_local, j_local) *
-               (w_ij - w_local.at(i_local - 1, j_local))) *
-          inv_h1_sq;
-      double term_y =
-          (b_local.at(i_local, j_local + 1) *
-               (w_local.at(i_local, j_local + 1) - w_ij) -
-           b_local.at(i_local, j_local) *
-               (w_ij - w_local.at(i_local, j_local - 1))) *
-          inv_h2_sq;
+      double term_x = (a_local.at(i_local + 1, j_local) *
+                           (w_local.at(i_local + 1, j_local) - w_ij) -
+                       a_local.at(i_local, j_local) *
+                           (w_ij - w_local.at(i_local - 1, j_local))) *
+                      inv_h1_sq;
+      double term_y = (b_local.at(i_local, j_local + 1) *
+                           (w_local.at(i_local, j_local + 1) - w_ij) -
+                       b_local.at(i_local, j_local) *
+                           (w_ij - w_local.at(i_local, j_local - 1))) *
+                      inv_h2_sq;
       out_local.at(i_local, j_local) = -(term_x + term_y);
     }
   }
@@ -372,8 +368,7 @@ void apply_D_inv_local(const Grid &grid, const DomainRange &local_range,
                        DistributedVector &out_local) {
   (void)grid;
   out_local.fill(0.0);
-  if (local_range.ii0 > local_range.ii1 || local_range.jj0 >
-                                          local_range.jj1) {
+  if (local_range.ii0 > local_range.ii1 || local_range.jj0 > local_range.jj1) {
     return;
   }
   for (int j = local_range.jj0; j <= local_range.jj1; ++j) {
@@ -385,8 +380,7 @@ void apply_D_inv_local(const Grid &grid, const DomainRange &local_range,
         throw std::runtime_error(
             "Диагональный элемент предобуславливателя не положителен");
       }
-      out_local.at(i_local, j_local) =
-          in_local.at(i_local, j_local) / d;
+      out_local.at(i_local, j_local) = in_local.at(i_local, j_local) / d;
     }
   }
 }
@@ -395,94 +389,76 @@ void exchange_halo(MPI_Comm cart_comm, const Partition &partition,
                    const DomainRange &local_range, DistributedVector &vec) {
   (void)partition;
   (void)local_range;
-  if (vec.halo == 0) {
+  if (vec.halo == 0)
     return;
-  }
-  int left = MPI_PROC_NULL;
-  int right = MPI_PROC_NULL;
-  int down = MPI_PROC_NULL;
-  int up = MPI_PROC_NULL;
+
+  int left = MPI_PROC_NULL, right = MPI_PROC_NULL, down = MPI_PROC_NULL,
+      up = MPI_PROC_NULL;
   MPI_Cart_shift(cart_comm, 0, 1, &left, &right);
   MPI_Cart_shift(cart_comm, 1, 1, &down, &up);
 
   if (vec.local_ny > 0) {
-    std::vector<double> send(vec.local_ny, 0.0);
-    std::vector<double> recv(vec.local_ny, 0.0);
+    std::vector<double> send(vec.local_ny, 0.0), recv(vec.local_ny, 0.0);
+
     if (left != MPI_PROC_NULL) {
-      for (int j = 0; j < vec.local_ny; ++j) {
+      for (int j = 0; j < vec.local_ny; ++j)
         send[static_cast<std::size_t>(j)] = vec.at(0, j);
-      }
-      MPI_Sendrecv(send.data(), vec.local_ny, MPI_DOUBLE, left, 0,
-                   recv.data(), vec.local_ny, MPI_DOUBLE, left, 0,
-                   cart_comm, MPI_STATUS_IGNORE);
-      for (int j = 0; j < vec.local_ny; ++j) {
+      MPI_Sendrecv(send.data(), vec.local_ny, MPI_DOUBLE, left, 0, recv.data(),
+                   vec.local_ny, MPI_DOUBLE, left, 1, cart_comm,
+                   MPI_STATUS_IGNORE);
+      for (int j = 0; j < vec.local_ny; ++j)
         vec.at_with_halo(-1, j) = recv[static_cast<std::size_t>(j)];
-      }
     } else {
-      for (int j = 0; j < vec.local_ny; ++j) {
+      for (int j = 0; j < vec.local_ny; ++j)
         vec.at_with_halo(-1, j) = 0.0;
-      }
     }
 
     if (right != MPI_PROC_NULL) {
-      for (int j = 0; j < vec.local_ny; ++j) {
-        send[static_cast<std::size_t>(j)] =
-            vec.at(vec.local_nx - 1, j);
-      }
-      MPI_Sendrecv(send.data(), vec.local_ny, MPI_DOUBLE, right, 1,
-                   recv.data(), vec.local_ny, MPI_DOUBLE, right, 1,
-                   cart_comm, MPI_STATUS_IGNORE);
-      for (int j = 0; j < vec.local_ny; ++j) {
-        vec.at_with_halo(vec.local_nx, j) =
-            recv[static_cast<std::size_t>(j)];
-      }
+      for (int j = 0; j < vec.local_ny; ++j)
+        send[static_cast<std::size_t>(j)] = vec.at(vec.local_nx - 1, j);
+      MPI_Sendrecv(send.data(), vec.local_ny, MPI_DOUBLE, right, 1, recv.data(),
+                   vec.local_ny, MPI_DOUBLE, right, 0, cart_comm,
+                   MPI_STATUS_IGNORE);
+      for (int j = 0; j < vec.local_ny; ++j)
+        vec.at_with_halo(vec.local_nx, j) = recv[static_cast<std::size_t>(j)];
     } else {
-      for (int j = 0; j < vec.local_ny; ++j) {
+      for (int j = 0; j < vec.local_ny; ++j)
         vec.at_with_halo(vec.local_nx, j) = 0.0;
-      }
     }
   }
 
   if (vec.local_nx > 0) {
-    std::vector<double> send(vec.local_nx, 0.0);
-    std::vector<double> recv(vec.local_nx, 0.0);
+    std::vector<double> send(vec.local_nx, 0.0), recv(vec.local_nx, 0.0);
+
     if (down != MPI_PROC_NULL) {
-      for (int i = 0; i < vec.local_nx; ++i) {
+      for (int i = 0; i < vec.local_nx; ++i)
         send[static_cast<std::size_t>(i)] = vec.at(i, 0);
-      }
-      MPI_Sendrecv(send.data(), vec.local_nx, MPI_DOUBLE, down, 2,
-                   recv.data(), vec.local_nx, MPI_DOUBLE, down, 2,
-                   cart_comm, MPI_STATUS_IGNORE);
-      for (int i = 0; i < vec.local_nx; ++i) {
+      MPI_Sendrecv(send.data(), vec.local_nx, MPI_DOUBLE, down, 2, recv.data(),
+                   vec.local_nx, MPI_DOUBLE, down, 3, cart_comm,
+                   MPI_STATUS_IGNORE);
+      for (int i = 0; i < vec.local_nx; ++i)
         vec.at_with_halo(i, -1) = recv[static_cast<std::size_t>(i)];
-      }
     } else {
-      for (int i = 0; i < vec.local_nx; ++i) {
+      for (int i = 0; i < vec.local_nx; ++i)
         vec.at_with_halo(i, -1) = 0.0;
-      }
     }
 
     if (up != MPI_PROC_NULL) {
-      for (int i = 0; i < vec.local_nx; ++i) {
-        send[static_cast<std::size_t>(i)] =
-            vec.at(i, vec.local_ny - 1);
-      }
-      MPI_Sendrecv(send.data(), vec.local_nx, MPI_DOUBLE, up, 3,
-                   recv.data(), vec.local_nx, MPI_DOUBLE, up, 3,
-                   cart_comm, MPI_STATUS_IGNORE);
-      for (int i = 0; i < vec.local_nx; ++i) {
+      for (int i = 0; i < vec.local_nx; ++i)
+        send[static_cast<std::size_t>(i)] = vec.at(i, vec.local_ny - 1);
+      MPI_Sendrecv(send.data(), vec.local_nx, MPI_DOUBLE, up, 3, recv.data(),
+                   vec.local_nx, MPI_DOUBLE, up, 2, cart_comm,
+                   MPI_STATUS_IGNORE);
+      for (int i = 0; i < vec.local_nx; ++i)
         vec.at_with_halo(i, vec.local_ny) = recv[static_cast<std::size_t>(i)];
-      }
     } else {
-      for (int i = 0; i < vec.local_nx; ++i) {
+      for (int i = 0; i < vec.local_nx; ++i)
         vec.at_with_halo(i, vec.local_ny) = 0.0;
-      }
     }
   }
 }
 
-std::vector<double> gather_global_solution(const Grid &grid,
-                                           MPI_Comm cart_comm,
+std::vector<double> gather_global_solution(const Grid &grid, MPI_Comm cart_comm,
                                            const Partition &partition,
                                            int block_id,
                                            const DistributedVector &w_local) {
@@ -511,12 +487,10 @@ std::vector<double> gather_global_solution(const Grid &grid,
     block_ids.resize(static_cast<std::size_t>(cart_size));
   }
 
-  MPI_Gather(&local_count, 1, MPI_INT,
-             cart_rank == 0 ? counts.data() : nullptr, 1, MPI_INT, 0,
-             cart_comm);
-  MPI_Gather(&block_id, 1, MPI_INT,
-             cart_rank == 0 ? block_ids.data() : nullptr, 1, MPI_INT, 0,
-             cart_comm);
+  MPI_Gather(&local_count, 1, MPI_INT, cart_rank == 0 ? counts.data() : nullptr,
+             1, MPI_INT, 0, cart_comm);
+  MPI_Gather(&block_id, 1, MPI_INT, cart_rank == 0 ? block_ids.data() : nullptr,
+             1, MPI_INT, 0, cart_comm);
 
   std::vector<double> recv_buffer;
   if (cart_rank == 0) {
@@ -540,18 +514,17 @@ std::vector<double> gather_global_solution(const Grid &grid,
                               static_cast<std::size_t>(grid.N + 1);
     global_solution.assign(total_nodes, 0.0);
     for (int r = 0; r < cart_size; ++r) {
-      const auto &range =
-          partition.ranges[static_cast<std::size_t>(block_ids[static_cast<std::size_t>(r)])];
+      const auto &range = partition.ranges[static_cast<std::size_t>(
+          block_ids[static_cast<std::size_t>(r)])];
       int nx = range.ix1 >= range.ix0 ? range.ix1 - range.ix0 + 1 : 0;
       int ny = range.iy1 >= range.iy0 ? range.iy1 - range.iy0 + 1 : 0;
-      const double *src = recv_buffer.data() +
-                          displs[static_cast<std::size_t>(r)];
+      const double *src =
+          recv_buffer.data() + displs[static_cast<std::size_t>(r)];
       for (int j = 0; j < ny; ++j) {
         for (int i = 0; i < nx; ++i) {
           int global_i = range.ix0 + i;
           int global_j = range.iy0 + j;
-          global_solution[grid.index(global_i, global_j)] =
-              src[j * nx + i];
+          global_solution[grid.index(global_i, global_j)] = src[j * nx + i];
         }
       }
     }
@@ -575,12 +548,11 @@ Result solve_problem(const Config &config, const Partition &partition,
   double rhs_norm = norm_E_global(grid, local_range, data.F, cart_comm);
   double rhs_norm_safe = rhs_norm == 0.0 ? 1.0 : rhs_norm;
 
-  double residual_norm =
-      norm_E_global(grid, local_range, r_local, cart_comm);
+  double residual_norm = norm_E_global(grid, local_range, r_local, cart_comm);
   double diff_norm = std::numeric_limits<double>::infinity();
   apply_D_inv_local(grid, local_range, data.diag, r_local, z_local);
-  double rho = inner_product_global(grid, local_range, r_local, z_local,
-                                    cart_comm);
+  double rho =
+      inner_product_global(grid, local_range, r_local, z_local, cart_comm);
   p_local = z_local;
   std::vector<IterationLogEntry> iteration_log;
   if (collect_logs) {
@@ -613,22 +585,19 @@ Result solve_problem(const Config &config, const Partition &partition,
     }
     diff_norm = std::sqrt(p_norm_sq) * std::abs(alpha);
 
-    if (!(local_range.ii0 > local_range.ii1 || local_range.jj0 >
-                                            local_range.jj1)) {
+    if (!(local_range.ii0 > local_range.ii1 ||
+          local_range.jj0 > local_range.jj1)) {
       for (int j = local_range.jj0; j <= local_range.jj1; ++j) {
         int j_local = j - local_range.iy0;
         for (int i = local_range.ii0; i <= local_range.ii1; ++i) {
           int i_local = i - local_range.ix0;
-          w_local.at(i_local, j_local) +=
-              alpha * p_local.at(i_local, j_local);
-          r_local.at(i_local, j_local) -=
-              alpha * Ap_local.at(i_local, j_local);
+          w_local.at(i_local, j_local) += alpha * p_local.at(i_local, j_local);
+          r_local.at(i_local, j_local) -= alpha * Ap_local.at(i_local, j_local);
         }
       }
     }
 
-    residual_norm =
-        norm_E_global(grid, local_range, r_local, cart_comm);
+    residual_norm = norm_E_global(grid, local_range, r_local, cart_comm);
     ++iter;
     if (collect_logs) {
       iteration_log.push_back({iter, residual_norm, alpha});
@@ -644,22 +613,21 @@ Result solve_problem(const Config &config, const Partition &partition,
     }
 
     apply_D_inv_local(grid, local_range, data.diag, r_local, z_local);
-    double rho_next = inner_product_global(grid, local_range, r_local, z_local,
-                                           cart_comm);
+    double rho_next =
+        inner_product_global(grid, local_range, r_local, z_local, cart_comm);
     if (std::abs(rho_next) < 1e-30) {
       stop_reason = "rho<=0";
       break;
     }
     double beta = rho_next / rho;
-    if (!(local_range.ii0 > local_range.ii1 || local_range.jj0 >
-                                            local_range.jj1)) {
+    if (!(local_range.ii0 > local_range.ii1 ||
+          local_range.jj0 > local_range.jj1)) {
       for (int j = local_range.jj0; j <= local_range.jj1; ++j) {
         int j_local = j - local_range.iy0;
         for (int i = local_range.ii0; i <= local_range.ii1; ++i) {
           int i_local = i - local_range.ix0;
-          p_local.at(i_local, j_local) =
-              z_local.at(i_local, j_local) +
-              beta * p_local.at(i_local, j_local);
+          p_local.at(i_local, j_local) = z_local.at(i_local, j_local) +
+                                         beta * p_local.at(i_local, j_local);
         }
       }
     }
@@ -941,8 +909,7 @@ int main(int argc, char **argv) {
     int coords[2] = {0, 0};
     MPI_Cart_coords(cart_comm, cart_rank, 2, coords);
     int block_id = coords[1] * Px + coords[0];
-    if (block_id < 0 ||
-        block_id >= static_cast<int>(partition.ranges.size())) {
+    if (block_id < 0 || block_id >= static_cast<int>(partition.ranges.size())) {
       throw std::runtime_error("Некорректный block_id для процесса");
     }
     const DomainRange &local_range =
