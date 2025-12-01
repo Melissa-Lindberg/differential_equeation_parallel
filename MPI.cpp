@@ -11,9 +11,22 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "MPI.h"
+
+static inline std::pair<int, int> get_cart_dims(int world_size) {
+  int dims[2] = {0, 0};
+  int rc = MPI_Dims_create(world_size, 2, dims);
+  if (rc != MPI_SUCCESS) {
+    throw std::runtime_error("MPI_Dims_create failed");
+  }
+  if (dims[0] <= 0 || dims[1] <= 0 || dims[0] * dims[1] != world_size) {
+    throw std::runtime_error("MPI_Dims_create не удалось разложить world_size");
+  }
+  return {dims[0], dims[1]};
+}
 
 struct DistributedVector {
   int global_ix0 = 0;
@@ -886,31 +899,30 @@ int main(int argc, char **argv) {
       throw std::runtime_error("Сетке нужны M,N >= 2");
     }
 
-    auto partition_guess = parse_px_py_or_defaults(argc, argv, M, N);
-    int Px = partition_guess.first;
-    int Py = partition_guess.second;
-    auto part_check = check_partition(M, N, Px, Py);
+    auto used_dims = get_cart_dims(world_size);
+    int Px_used = used_dims.first;
+    int Py_used = used_dims.second;
+
+    auto part_check = check_partition(M, N, Px_used, Py_used);
     Partition partition = std::move(part_check.partition);
-    if (static_cast<int>(partition.ranges.size()) != Px * Py) {
-      throw std::runtime_error("Размеры разбиения не совпадают с Px*Py");
-    }
-    if (world_size != Px * Py) {
-      throw std::runtime_error("world_size должен равняться Px*Py");
+    if (static_cast<int>(partition.ranges.size()) != Px_used * Py_used) {
+      throw std::runtime_error("partition size != Px_used*Py_used");
     }
 
-    int dims[2] = {Px, Py};
+    int dims[2] = {Px_used, Py_used};
     int periods[2] = {0, 0};
-    MPI_Cart_create(MPI_COMM_WORLD, 2, dims, periods, 0, &cart_comm);
-    if (cart_comm == MPI_COMM_NULL) {
-      throw std::runtime_error("Не удалось создать декартову топологию");
+    if (MPI_Cart_create(MPI_COMM_WORLD, 2, dims, periods, 1, &cart_comm) !=
+            MPI_SUCCESS ||
+        cart_comm == MPI_COMM_NULL) {
+      throw std::runtime_error("MPI_Cart_create failed");
     }
     int cart_rank = 0;
     MPI_Comm_rank(cart_comm, &cart_rank);
     int coords[2] = {0, 0};
     MPI_Cart_coords(cart_comm, cart_rank, 2, coords);
-    int block_id = coords[1] * Px + coords[0];
+    int block_id = coords[1] * Px_used + coords[0];
     if (block_id < 0 || block_id >= static_cast<int>(partition.ranges.size())) {
-      throw std::runtime_error("Некорректный block_id для процесса");
+      throw std::runtime_error("Не валидный block_id");
     }
     const DomainRange &local_range =
         partition.ranges[static_cast<std::size_t>(block_id)];
