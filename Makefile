@@ -7,21 +7,25 @@ OMPFLAGS := -fopenmp
 SEQ_TARGET := consistent
 OMP_TARGET := openmp
 MPI_TARGET := mpi
+HYBRID_TARGET := hybrid
 
 SEQ_SRCS := consistent.cpp log.cpp
 OMP_SRCS := OpenMP.cpp log.cpp
 MPI_SRCS := MPI.cpp log.cpp
+HYBRID_SRCS := hybrid.cpp log.cpp
 
 OBJ_DIR := build
 SEQ_OBJ_DIR := $(OBJ_DIR)/seq
 OMP_OBJ_DIR := $(OBJ_DIR)/omp
 MPI_OBJ_DIR := $(OBJ_DIR)/mpi
+HYBRID_OBJ_DIR := $(OBJ_DIR)/hybrid
 
 SEQ_OBJS := $(addprefix $(SEQ_OBJ_DIR)/,$(SEQ_SRCS:.cpp=.o))
 OMP_OBJS := $(addprefix $(OMP_OBJ_DIR)/,$(OMP_SRCS:.cpp=.o))
 MPI_OBJS := $(addprefix $(MPI_OBJ_DIR)/,$(MPI_SRCS:.cpp=.o))
+HYBRID_OBJS := $(addprefix $(HYBRID_OBJ_DIR)/,$(HYBRID_SRCS:.cpp=.o))
 
-ALL_TARGETS := $(SEQ_TARGET) $(OMP_TARGET) $(MPI_TARGET)
+ALL_TARGETS := $(SEQ_TARGET) $(OMP_TARGET) $(MPI_TARGET) $(HYBRID_TARGET)
 
 .PHONY: all clean
 
@@ -36,6 +40,9 @@ $(OMP_TARGET): $(OMP_OBJS)
 $(MPI_TARGET): $(MPI_OBJS)
 	$(MPICXX) $(CXXFLAGS) $^ -o $@ $(MPI_LDFLAGS)
 
+$(HYBRID_TARGET): $(HYBRID_OBJS)
+	$(MPICXX) $(CXXFLAGS) $(OMPFLAGS) $^ -o $@ $(MPI_LDFLAGS)
+
 $(SEQ_OBJ_DIR)/%.o: %.cpp | $(SEQ_OBJ_DIR)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
@@ -45,6 +52,9 @@ $(OMP_OBJ_DIR)/%.o: %.cpp | $(OMP_OBJ_DIR)
 $(MPI_OBJ_DIR)/%.o: %.cpp | $(MPI_OBJ_DIR)
 	$(MPICXX) $(CXXFLAGS) $(MPI_CXXFLAGS) -c $< -o $@
 
+$(HYBRID_OBJ_DIR)/%.o: %.cpp | $(HYBRID_OBJ_DIR)
+	$(MPICXX) $(CXXFLAGS) $(OMPFLAGS) $(MPI_CXXFLAGS) -c $< -o $@
+
 $(SEQ_OBJ_DIR):
 	@mkdir -p $@
 
@@ -53,6 +63,9 @@ $(OMP_OBJ_DIR):
 
 $(MPI_OBJ_DIR):
 	@mkdir -p $@
+
+$(HYBRID_OBJ_DIR):
+	@mkdir -p $@
 	
 clean:
-	rm -rf $(OBJ_DIR) $(SEQ_TARGET) $(OMP_TARGET) $(MPI_TARGET) output
+	rm -rf $(OBJ_DIR) $(SEQ_TARGET) $(OMP_TARGET) $(MPI_TARGET) $(HYBRID_OBJ_DIR) output

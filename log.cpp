@@ -6,7 +6,7 @@
 #include <cerrno>
 #include <cstdlib>
 #include <fstream>
-#include <iomanip>Ы
+#include <iomanip>
 #include <limits>
 #include <stdexcept>
 
